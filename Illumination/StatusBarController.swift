@@ -84,7 +84,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
 
     private func updateStatusIcon() {
         let enabled = UserDefaults.standard.bool(forKey: "illumination.enabled")
-        statusItem.button?.image = NSImage(systemSymbolName: enabled ? "sun.max.circle.fill" : "sun.max.circle", accessibilityDescription: "Illumination")
+        statusItem.button?.image = NSImage(systemSymbolName: enabled ? "sun.max.fill" : "sun.min", accessibilityDescription: "Illumination")
         statusItem.button?.toolTip = "Illumination"
     }
 
