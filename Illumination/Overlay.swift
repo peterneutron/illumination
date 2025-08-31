@@ -27,6 +27,9 @@ final class Overlay: MTKView, MTKViewDelegate {
         colorspace = colorSpace
         clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0)
         preferredFramesPerSecond = 5
+        // Default to paused + setNeedsDisplay-driven to minimize CPU; callers unpause for bursts.
+        isPaused = true
+        enableSetNeedsDisplay = true
 
         if let layer = self.layer as? CAMetalLayer {
             layer.wantsExtendedDynamicRangeContent = true
@@ -67,5 +70,18 @@ final class Overlay: MTKView, MTKViewDelegate {
 
     func setFPS(_ fps: Int) {
         preferredFramesPerSecond = fps
+    }
+
+    func requestRedraw() {
+        setNeedsDisplay(bounds)
+    }
+
+    func setPausedDrawLoop(_ paused: Bool) {
+        isPaused = paused
+        enableSetNeedsDisplay = paused
+        if paused {
+            // Ensure at least one present happens on transition
+            requestRedraw()
+        }
     }
 }
