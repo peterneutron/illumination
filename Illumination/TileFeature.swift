@@ -20,8 +20,8 @@ final class TileFeature {
         // Ensure asset availability is scanned at startup
         HDRTileManager.shared.scanAssetAvailability()
         installObservers()
-        // Apply persisted state without altering any overlay logic
-        if enabled { ensurePanelIfNeeded(); applyCurrentPresentation() }
+        // If tile is enabled on launch, fully enable it (attach + present)
+        if enabled { enable() }
     }
 
     private func installObservers() {
