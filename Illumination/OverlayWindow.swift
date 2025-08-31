@@ -90,6 +90,14 @@ final class OverlayWindowController: NSWindowController, NSWindowDelegate {
         open(rect: rect)
     }
 
+    func requestRedraw() {
+        (window as? OverlayWindow)?.overlay?.requestRedraw()
+    }
+
+    func setPausedDrawLoop(_ paused: Bool) {
+        (window as? OverlayWindow)?.overlay?.setPausedDrawLoop(paused)
+    }
+
     func windowDidMove(_ notification: Notification) {
         guard let win = window, let sc = win.screen else { return }
         var ideal = sc.frame.origin

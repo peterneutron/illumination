@@ -41,15 +41,27 @@ final class TilePanelController: NSWindowController {
 
     func open() {
         guard let w = window else { return }
-        w.setFrame(screen.frame, display: true)
         w.orderFrontRegardless()
     }
 
     func reposition(to screen: NSScreen) {
         self.screen = screen
-        window?.setFrame(screen.frame, display: true)
+        bringToActiveSpace()
+    }
+
+    func updateFrame(tileSize: Int, fullscreen: Bool) {
+        guard let w = window else { return }
+        if fullscreen {
+            w.setFrame(screen.frame, display: true)
+        } else {
+            let vs = screen.visibleFrame
+            let size = CGFloat(max(1, tileSize))
+            // Bottom-left corner with small margin
+            let margin: CGFloat = 8
+            let rect = NSRect(x: vs.origin.x + margin, y: vs.origin.y + margin, width: size + 24, height: size + 24)
+            w.setFrame(rect, display: true)
+        }
     }
 
     func bringToActiveSpace() { window?.orderFrontRegardless() }
 }
-
