@@ -55,6 +55,7 @@ final class GammaTechnique {
     private var desiredFullsize: Bool = true
     private var desiredFPS: Int = 30
     private var nudgeTimer: Timer?
+    private var overlaysPaused: Bool = true
 
     func enable() {
         for screen in targetDisplays() {
@@ -124,19 +125,31 @@ final class GammaTechnique {
             if ctrl.fullsize != fullsize, NSScreen.screens.first(where: { $0.displayId == id }) != nil {
                 ctrl.recreate(fullsize: fullsize)
                 ctrl.setFPS(fps)
+                ctrl.setPausedDrawLoop(true)
             } else {
                 ctrl.setFPS(fps)
+                ctrl.setPausedDrawLoop(true)
             }
+            ctrl.requestRedraw()
         }
+        overlaysPaused = true
     }
 
     func nudgeEDR() {
+        // Temporarily unpause and bump FPS to strongly refresh EDR
+        // Temporarily unpause and bump FPS to strongly refresh EDR
+        for (_, ctrl) in overlayWindowControllers { ctrl.setPausedDrawLoop(false) }
         setOverlayConfig(fullsize: desiredFullsize, fps: max(desiredFPS, 60))
         nudgeTimer?.invalidate()
         nudgeTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
             guard let self = self else { return }
             self.setOverlayConfig(fullsize: self.desiredFullsize, fps: self.desiredFPS)
+            for (_, ctrl) in self.overlayWindowControllers { ctrl.setPausedDrawLoop(true) }
         }
+    }
+
+    func pulseOverlays() {
+        for (_, ctrl) in overlayWindowControllers { ctrl.requestRedraw() }
     }
 }
 
@@ -339,6 +352,11 @@ final class BrightnessController {
                 if abs(newFactor - self.factor) > 0.0001 {
                     self.factor = newFactor
                     self.technique.adjust(factor: Float(self.factor))
+                }
+                // In paused mode, drive an occasional present to keep EDR alive without a tight loop
+                // Skip pulses if the HDR tile is enabled; tile maintains EDR by itself.
+                if !TileFeature.shared.enabled {
+                    self.technique.pulseOverlays()
                 }
 
                 // EDR watchdog: if EDR appears disengaged (maxEDR ~ 1.0) while userPercent > 0, aggressively rebuild overlay in fullscreen mode and bump FPS
