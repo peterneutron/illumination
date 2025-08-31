@@ -1,0 +1,69 @@
+# Go
+/build-go/
+bin/
+dist/
+*.exe
+*.test
+*.out
+coverage*.txt
+go.work
+go.work.sum
+/.gocache/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+.Spotlight-V100
+.Trashes
+._*
+
+# Xcode / Swift
+DerivedData/
+*.hmap
+*.ipa
+*.app
+*.dSYM/
+*.moved-aside
+*.xcuserstate
+*.xccheckout
+*.xcuserdatad
+xcuserdata/
+# If you actually use a workspace, track it; otherwise keep this ignore:
+# *.xcworkspace
+
+# IDEs
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.idea/
+
+# Secrets / certs
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.cer
+*.mobileprovision
+*.keystore
+*.jks
+
+# Logs & misc
+*.log
+*.crash
+*.trace
+repomix-output.xml
+agents.md
+
+# Caches
+/.cache/
+
+# Custom
+
+build/
+Illumination.xcodeproj/project.xcworkspace/xcuserdata/sebastian.xcuserdatad/UserInterfaceState.xcuserstate
