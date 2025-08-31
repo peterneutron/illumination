@@ -227,6 +227,72 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         let toggleOpacity = NSMenuItem(title: "Toggle Tile Opacity", action: #selector(toggleTileOpacity), keyEquivalent: "")
         toggleOpacity.target = self
         debugMenu.addItem(toggleOpacity)
+
+        // --- HDR-aware (auto-duck) ---
+        debugMenu.addItem(NSMenuItem.separator())
+        let detectionMode = BrightnessController.shared.hdrRegionSamplerModeValue()
+        let detTitle: String = {
+            switch detectionMode {
+            case 0: return "Off"
+            case 1: return "On"
+            case 2: return "Auto"
+            case 3: return "Apps"
+            default: return "Off"
+            }
+        }()
+        debugMenu.addItem(withTitle: "HDR Detection: \(detTitle)", action: nil, keyEquivalent: "")
+        let detItem = NSMenuItem(title: "Set HDR Detection", action: nil, keyEquivalent: "")
+        let detMenu = NSMenu()
+        let detModes = [(0, "Off"), (1, "On"), (2, "Auto"), (3, "Apps")]
+        for (val, name) in detModes {
+            let item = NSMenuItem(title: name, action: #selector(setHDRRegionSamplerModePreset(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = val
+            if val == detectionMode { item.state = .on }
+            detMenu.addItem(item)
+        }
+        detItem.submenu = detMenu
+        debugMenu.addItem(detItem)
+        let duckPct = Int(round(BrightnessController.shared.hdrAwareDuckPercentValue()))
+        debugMenu.addItem(withTitle: "HDR Duck Target: \(duckPct)%", action: nil, keyEquivalent: "")
+        let duckMenuItem = NSMenuItem(title: "Set HDR Duck Target", action: nil, keyEquivalent: "")
+        let duckMenu = NSMenu()
+        for p in [30, 40, 50] {
+            let item = NSMenuItem(title: "\(p)%", action: #selector(setHDRAwareDuckPreset(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = p
+            if p == duckPct { item.state = .on }
+            duckMenu.addItem(item)
+        }
+        duckMenuItem.submenu = duckMenu
+        debugMenu.addItem(duckMenuItem)
+        let thr = BrightnessController.shared.hdrAwareThresholdValue()
+        debugMenu.addItem(withTitle: String(format: "HDR Threshold: %.2f", thr), action: nil, keyEquivalent: "")
+        let thrItem = NSMenuItem(title: "Set HDR Threshold", action: nil, keyEquivalent: "")
+        let thrMenu = NSMenu()
+        for t in [1.4, 1.5, 1.8, 2.0] {
+            let item = NSMenuItem(title: String(format: "%.2f", t), action: #selector(setHDRAwareThresholdPreset(_:)), keyEquivalent: "")
+            item.representedObject = t
+            item.target = self
+            if abs(t - thr) < 0.001 { item.state = .on }
+            thrMenu.addItem(item)
+        }
+        thrItem.submenu = thrMenu
+        debugMenu.addItem(thrItem)
+        let fade = BrightnessController.shared.hdrAwareFadeDurationValue()
+        debugMenu.addItem(withTitle: String(format: "HDR Fade: %.0f ms", fade * 1000.0), action: nil, keyEquivalent: "")
+        let fadeItem = NSMenuItem(title: "Set HDR Fade", action: nil, keyEquivalent: "")
+        let fadeMenu = NSMenu()
+        for ms in [200, 300, 500] {
+            let item = NSMenuItem(title: "\(ms) ms", action: #selector(setHDRAwareFadePreset(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = ms
+            if abs(Double(ms)/1000.0 - fade) < 0.01 { item.state = .on }
+            fadeMenu.addItem(item)
+        }
+        fadeItem.submenu = fadeMenu
+        debugMenu.addItem(fadeItem)
+        // HDR Region Sampler options are unified under HDR Detection above
         debugMenu.addItem(withTitle: String(format: "Current Factor: %.3f", currentFactor), action: nil, keyEquivalent: "")
         debugMenu.addItem(withTitle: String(format: "Target %%: %.0f%%, Effective %%: %.0f%%", targetPct, effectivePct), action: nil, keyEquivalent: "")
         debugMenu.addItem(withTitle: "Enabled: \(enabled ? "Yes" : "No")", action: nil, keyEquivalent: "")
@@ -303,7 +369,20 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         TileFeature.shared.toggleFullOpacity()
     }
 
-    @objc private func setTileSizePreset(_ sender: NSMenuItem) {
-        TileFeature.shared.size = sender.tag
+    @objc private func setTileSizePreset(_ sender: NSMenuItem) { TileFeature.shared.size = sender.tag }
+
+    // MARK: - HDR-aware actions
+    // No direct HDR-Aware toggle; use HDR Detection mode instead
+    @objc private func setHDRAwareDuckPreset(_ sender: NSMenuItem) {
+        BrightnessController.shared.setHDRAwareDuckPercent(Double(sender.tag))
+    }
+    @objc private func setHDRAwareThresholdPreset(_ sender: NSMenuItem) {
+        if let v = sender.representedObject as? Double { BrightnessController.shared.setHDRAwareThreshold(v) }
+    }
+    @objc private func setHDRAwareFadePreset(_ sender: NSMenuItem) {
+        BrightnessController.shared.setHDRAwareFadeDuration(Double(sender.tag) / 1000.0)
+    }
+    @objc private func setHDRRegionSamplerModePreset(_ sender: NSMenuItem) {
+        BrightnessController.shared.setHDRRegionSamplerMode(sender.tag)
     }
 }
