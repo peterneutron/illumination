@@ -10,7 +10,6 @@ final class TileFeature {
 
     // Persistence keys (tile-only)
     private let keyEnabled = "illumination.overlay.hdrtile"
-    private let keyFullscreen = "illumination.overlay.hdrtile.fullscreen"
     private let keyFullOpacity = "illumination.overlay.hdrtile.fullopacity"
     private let keySize = "illumination.overlay.hdrtile.size"
 
@@ -37,24 +36,25 @@ final class TileFeature {
         get { UserDefaults.standard.object(forKey: keyEnabled) as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: keyEnabled); newValue ? enable() : disable() }
     }
-    var fullscreen: Bool {
-        get { UserDefaults.standard.object(forKey: keyFullscreen) as? Bool ?? false }
-        set { UserDefaults.standard.set(newValue, forKey: keyFullscreen); applyCurrentPresentation() }
-    }
+    // Fullscreen mode removed; tile is always Corner mode
     var fullOpacity: Bool {
         get { UserDefaults.standard.object(forKey: keyFullOpacity) as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: keyFullOpacity); HDRTileManager.shared.setFullOpacity(newValue) }
     }
     var size: Int {
         get { max(1, min(512, UserDefaults.standard.object(forKey: keySize) as? Int ?? 64)) }
-        set { let s = max(1, min(512, newValue)); UserDefaults.standard.set(s, forKey: keySize); HDRTileManager.shared.setTileSize(s) }
+        set {
+            let s = max(1, min(512, newValue))
+            UserDefaults.standard.set(s, forKey: keySize)
+            HDRTileManager.shared.setTileSize(s)
+            panelController?.updateFrame(tileSize: s, fullscreen: false)
+        }
     }
 
     var assetAvailable: Bool { HDRTileManager.shared.assetAvailable }
 
     // MARK: - Control
     func toggleEnabled() { enabled.toggle() }
-    func toggleFullscreen() { fullscreen.toggle() }
     func toggleFullOpacity() { fullOpacity.toggle() }
 
     // MARK: - Internals
@@ -69,6 +69,7 @@ final class TileFeature {
         ensurePanelIfNeeded()
         guard let panel = panelController else { return }
         panel.open()
+        panel.updateFrame(tileSize: size, fullscreen: false)
         if let host = panel.window?.contentView {
             HDRTileManager.shared.attach(to: host)
             HDRTileManager.shared.setTileSize(size)
@@ -84,20 +85,22 @@ final class TileFeature {
 
     private func applyCurrentPresentation() {
         if !enabled { return }
-        if fullscreen { HDRTileManager.shared.presentFullScreen() } else { HDRTileManager.shared.presentSmallTile() }
+        panelController?.updateFrame(tileSize: size, fullscreen: false)
+        HDRTileManager.shared.presentSmallTile()
     }
 
     @objc private func activeSpaceChanged(_ note: Notification) {
         guard enabled, let panel = panelController else { return }
         if let sc = NSScreen.main { panel.reposition(to: sc) }
         panel.bringToActiveSpace()
+        panel.updateFrame(tileSize: size, fullscreen: false)
         applyCurrentPresentation()
     }
 
     @objc private func screenParamsChanged(_ note: Notification) {
         guard let panel = panelController else { return }
         if let sc = NSScreen.main { panel.reposition(to: sc) }
+        panel.updateFrame(tileSize: size, fullscreen: false)
         applyCurrentPresentation()
     }
 }
-

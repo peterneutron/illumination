@@ -206,11 +206,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         toggleTile.target = self
         debugMenu.addItem(toggleTile)
 
-        let modeIsFull = TileFeature.shared.fullscreen
-        debugMenu.addItem(withTitle: "Tile Mode: \(modeIsFull ? "Fullscreen" : "Corner")", action: nil, keyEquivalent: "")
-        let toggleMode = NSMenuItem(title: "Toggle Tile Mode", action: #selector(toggleTileMode), keyEquivalent: "")
-        toggleMode.target = self
-        debugMenu.addItem(toggleMode)
+        // Tile Mode: Corner only (fullscreen removed)
 
         let currentSize = TileFeature.shared.size
         debugMenu.addItem(withTitle: "Tile Size: \(currentSize)x\(currentSize)", action: nil, keyEquivalent: "")
@@ -301,9 +297,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         TileFeature.shared.toggleEnabled()
     }
 
-    @objc private func toggleTileMode() {
-        TileFeature.shared.toggleFullscreen()
-    }
+    // Tile fullscreen mode removed
 
     @objc private func toggleTileOpacity() {
         TileFeature.shared.toggleFullOpacity()

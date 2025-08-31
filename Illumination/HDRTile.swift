@@ -59,7 +59,9 @@ final class HDRTileManager {
 
         let asset = AVURLAsset(url: assetURL)
         let item = AVPlayerItem(asset: asset)
+        item.preferredForwardBufferDuration = 0
         let q = AVQueuePlayer(items: [item])
+        q.automaticallyWaitsToMinimizeStalling = false
         let l = AVPlayerLayer(player: q)
         l.videoGravity = .resizeAspectFill
         l.isOpaque = false
@@ -121,4 +123,3 @@ final class HDRTileManager {
         if !fullscreen { presentSmallTile() }
     }
 }
-
