@@ -2,8 +2,6 @@
 //  Brightness.swift
 //  Illumination
 //
-//  Minimal port of BrightIntosh core brightness logic.
-//
 
 import Foundation
 import AppKit

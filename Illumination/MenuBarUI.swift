@@ -1,0 +1,285 @@
+//
+//  MenuBarUI.swift
+//  Illumination
+//
+
+import SwiftUI
+import AppKit
+import Combine
+
+// ViewModel bridging BrightnessController to SwiftUI
+final class IlluminationViewModel: ObservableObject {
+    @Published var enabled: Bool
+    @Published var userPercent: Double
+
+    private let controller = BrightnessController.shared
+
+    private var timer: Timer?
+
+    init() {
+        let defaults = UserDefaults.standard
+        enabled = defaults.object(forKey: "illumination.enabled") as? Bool ?? false
+        userPercent = controller.currentUserPercent()
+        // Kick controller to apply stored state as needed
+        controller.setEnabled(enabled)
+        // Light polling to keep UI in sync with non-Combine sources
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.enabled = UserDefaults.standard.bool(forKey: "illumination.enabled")
+                self.userPercent = self.controller.currentUserPercent()
+            }
+        }
+        RunLoop.main.add(timer!, forMode: .common)
+    }
+
+    deinit { timer?.invalidate() }
+
+    // MARK: - Intents
+    func setEnabled(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: "illumination.enabled")
+        controller.setEnabled(on)
+        enabled = on
+    }
+
+    func setPercent(_ p: Double) {
+        let clamped = max(0.0, min(100.0, p))
+        controller.setUserPercent(clamped)
+        userPercent = clamped
+    }
+
+    // MARK: - Derived status
+    var statusText: String {
+        if !enabled { return "Disabled" }
+        let pct = Int(round(userPercent))
+        return "Enabled — \(pct)%"
+    }
+
+    var debugDetails: [String] {
+        let d = controller.currentGammaCapDetails()
+        let model = getModelIdentifier() ?? "—"
+        let overlayFull = controller.overlayFullsizeEnabled()
+        let fps = controller.overlayFPSValue()
+        let currentFactor = controller.currentFactorValue()
+        let targetPct = Int(round(userPercent))
+        let effectivePct = Int(round(BrightnessController.percent(forFactor: currentFactor, cap: d.cap)))
+        return [
+            "Model: \(model)",
+            String(format: "Gamma Cap: %.3f", d.cap),
+            String(format: "Raw Cap: %.3f (%@)", d.rawCap, (d.rawCap > d.cap + 0.0005) ? "clamped" : "not clamped"),
+            String(format: "EDR Ratio: %.3f", d.bestRatio),
+            String(format: "Safety Margin: %.2f", d.adaptiveMargin),
+            String(format: "Ref Gain: %.3f (alpha: %.2f)", d.refGain, d.refAlpha),
+            String(format: "Guard Mode: %@, Factor: %.0f%%", controller.isGuardEnabled() ? "On" : "Off", controller.guardFactorValue() * 100.0),
+            "Overlay Fullsize: \(overlayFull ? "On" : "Off")",
+            "Overlay FPS: \(fps)",
+            String(format: "Current Factor: %.3f", currentFactor),
+            "Target %: \(targetPct)%, Effective %: \(effectivePct)%",
+            "Enabled: \(enabled ? "Yes" : "No")"
+        ]
+    }
+
+    // MARK: - Advanced Options wrappers
+    // Guard
+    var guardEnabled: Bool { controller.isGuardEnabled() }
+    func setGuardEnabled(_ on: Bool) { controller.setGuardEnabled(on); objectWillChange.send() }
+    func setGuardFactor(_ factor: Double) { controller.setGuardFactor(factor); objectWillChange.send() }
+
+    // Overlay
+    var overlayFullsize: Bool { controller.overlayFullsizeEnabled() }
+    func setOverlayFullsize(_ on: Bool) { controller.setOverlayFullsize(on); objectWillChange.send() }
+    var overlayFPS: Int { controller.overlayFPSValue() }
+    func setOverlayFPS(_ fps: Int) { controller.setOverlayFPS(fps); objectWillChange.send() }
+    func edrNudge() { controller.edrNudge() }
+
+    // HDR
+    var hdrMode: Int { controller.hdrRegionSamplerModeValue() } // 0 Off, 1 On, 2 Auto, 3 Apps
+    func setHDRMode(_ mode: Int) { controller.setHDRRegionSamplerMode(mode); objectWillChange.send() }
+    var hdrDuckPercent: Int { Int(round(controller.hdrAwareDuckPercentValue())) }
+    func setHDRDuckPercent(_ p: Int) { controller.setHDRAwareDuckPercent(Double(p)); objectWillChange.send() }
+    var hdrThreshold: Double { controller.hdrAwareThresholdValue() }
+    func setHDRThreshold(_ v: Double) { controller.setHDRAwareThreshold(v); objectWillChange.send() }
+    var hdrFadeMs: Int { Int(round(controller.hdrAwareFadeDurationValue() * 1000.0)) }
+    func setHDRFadeMs(_ ms: Int) { controller.setHDRAwareFadeDuration(Double(ms) / 1000.0); objectWillChange.send() }
+
+    // Tile
+    var tileAvailable: Bool { TileFeature.shared.assetAvailable }
+    var tileEnabled: Bool { TileFeature.shared.enabled }
+    func setTileEnabled(_ on: Bool) { TileFeature.shared.enabled = on; objectWillChange.send() }
+    var tileFullOpacity: Bool { TileFeature.shared.fullOpacity }
+    func setTileFullOpacity(_ on: Bool) { TileFeature.shared.fullOpacity = on; objectWillChange.send() }
+    var tileSize: Int { TileFeature.shared.size }
+    func setTileSize(_ px: Int) { TileFeature.shared.size = px; objectWillChange.send() }
+}
+
+// MARK: - Views
+
+struct IlluminationMenuBarLabel: View {
+    @ObservedObject var vm: IlluminationViewModel
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: vm.enabled ? "sun.max.fill" : "sun.min")
+            if vm.enabled {
+                Text("\(Int(vm.userPercent))%")
+                    .monospacedDigit()
+            }
+        }
+    }
+}
+
+struct IlluminationMenuView: View {
+    @ObservedObject var vm: IlluminationViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header (match PowerGrid: title then status line)
+            Text("Illumination")
+                .font(.title).bold()
+            HStack(spacing: 8) {
+                Text(vm.statusText).font(.caption)
+                Spacer()
+            }
+            Divider().padding(.vertical, 2)
+
+            // Enabled toggle + slider
+            Toggle("Enabled", isOn: Binding(
+                get: { vm.enabled },
+                set: { vm.setEnabled($0) }
+            ))
+
+            VStack(alignment: .leading) {
+                HStack {
+                    Text("Brightness")
+                    Spacer()
+                    Text("\(Int(vm.userPercent))%")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                PercentSlider(value: Binding(
+                    get: { vm.userPercent },
+                    set: { vm.setPercent($0) }
+                ))
+            }
+
+            Divider()
+
+            // Footer with Advanced Options dropdown and Quit on the right
+            HStack {
+                Menu("Advanced Options") {
+                    // Guard
+                    Text("Guard").font(.caption).foregroundStyle(.secondary)
+                    Toggle("Guard Mode", isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
+                    Menu("Guard Factor") {
+                        ForEach([0.75, 0.85, 0.90, 0.95], id: \.self) { f in
+                            Button(String(format: "%.0f%%", f * 100.0)) { vm.setGuardFactor(f) }
+                        }
+                    }
+
+                    Divider()
+
+                    // Overlay
+                    Text("Overlay").font(.caption).foregroundStyle(.secondary)
+                    Toggle("Fullsize", isOn: Binding(get: { vm.overlayFullsize }, set: { vm.setOverlayFullsize($0) }))
+                    Menu("FPS: \(vm.overlayFPS)") {
+                        ForEach([5, 15, 30, 60], id: \.self) { fps in
+                            Button("\(fps) fps") { vm.setOverlayFPS(fps) }
+                        }
+                    }
+                    Button("EDR Nudge") { vm.edrNudge() }
+
+                    Divider()
+
+                    // HDR
+                    Text("HDR").font(.caption).foregroundStyle(.secondary)
+                    Menu("Detection: \(modeName(vm.hdrMode))") {
+                        ForEach([(0,"Off"),(1,"On"),(2,"Auto"),(3,"Apps")], id: \.0) { m in
+                            Button(m.1) { vm.setHDRMode(m.0) }
+                        }
+                    }
+                    Menu("Duck Target: \(vm.hdrDuckPercent)%") {
+                        ForEach([30, 40, 50], id: \.self) { p in
+                            Button("\(p)%") { vm.setHDRDuckPercent(p) }
+                        }
+                    }
+                    Menu(String(format: "Threshold: %.2f", vm.hdrThreshold)) {
+                        ForEach([1.4, 1.5, 1.8, 2.0], id: \.self) { t in
+                            Button(String(format: "%.2f", t)) { vm.setHDRThreshold(t) }
+                        }
+                    }
+                    Menu("Fade: \(vm.hdrFadeMs) ms") {
+                        ForEach([200, 300, 500], id: \.self) { ms in
+                            Button("\(ms) ms") { vm.setHDRFadeMs(ms) }
+                        }
+                    }
+
+                    Divider()
+
+                    // HDR Tile
+                    Text("HDR Tile").font(.caption).foregroundStyle(.secondary)
+                    Toggle("Enable", isOn: Binding(get: { vm.tileEnabled }, set: { vm.setTileEnabled($0) }))
+                        .disabled(!vm.tileAvailable)
+                    if !vm.tileAvailable { Text("Asset not found").font(.caption).foregroundStyle(.secondary) }
+                    Menu("Size: \(vm.tileSize) px") {
+                        ForEach([64, 32, 16, 8, 4, 1], id: \.self) { s in
+                            Button("\(s) px") { vm.setTileSize(s) }
+                        }
+                    }
+                    Toggle("Full Opacity", isOn: Binding(get: { vm.tileFullOpacity }, set: { vm.setTileFullOpacity($0) }))
+
+                    Divider()
+
+                    // Debug
+                    Menu("Debug") {
+                        ForEach(vm.debugDetails, id: \.self) { line in
+                            Text(line)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button("Quit") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            }
+        }
+        .padding(12)
+        .frame(width: 320)
+    }
+
+    private func modeName(_ mode: Int) -> String {
+        switch mode { case 1: return "On"; case 2: return "Auto"; case 3: return "Apps"; default: return "Off" }
+    }
+}
+
+// MARK: - AppKit-backed slider without tick marks
+private struct PercentSlider: NSViewRepresentable {
+    @Binding var value: Double
+
+    func makeNSView(context: Context) -> NSSlider {
+        let slider = NSSlider(value: value, minValue: 0.0, maxValue: 100.0, target: context.coordinator, action: #selector(Coordinator.changed(_:)))
+        slider.isContinuous = true
+        slider.numberOfTickMarks = 0
+        slider.allowsTickMarkValuesOnly = false
+        return slider
+    }
+
+    func updateNSView(_ nsView: NSSlider, context: Context) {
+        if abs(nsView.doubleValue - value) > 0.0001 {
+            nsView.doubleValue = value
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(value: $value) }
+
+    final class Coordinator: NSObject {
+        var value: Binding<Double>
+        init(value: Binding<Double>) { self.value = value }
+        @objc func changed(_ sender: NSSlider) {
+            let rounded = round(sender.doubleValue)
+            if abs(rounded - value.wrappedValue) > 0.0001 {
+                value.wrappedValue = min(100.0, max(0.0, rounded))
+            }
+        }
+    }
+}
