@@ -260,13 +260,24 @@ final class BrightnessController {
     func setEnabled(_ enabled: Bool) {
         self.enabled = enabled
         if enabled {
+            // Resume auxiliary visuals (tile) on main thread to avoid window-thread issues
+            DispatchQueue.main.async {
+                TileFeature.shared.resumeAfterMasterEnable()
+            }
             technique.enable()
             technique.adjust(factor: Float(factor))
             technique.setOverlayConfig(fullsize: overlayFullsizeEnabled(), fps: overlayFPSValue())
         } else {
+            // Suspend auxiliary visuals (tile) on main thread
+            DispatchQueue.main.async {
+                TileFeature.shared.suspendForMasterDisable()
+            }
             technique.disable()
         }
     }
+
+    // Expose current master-enabled state for collaborators
+    func appIsEnabled() -> Bool { enabled }
 
     func setBrightnessFactor(_ factor: Double) {
         let maxCap = currentGammaCap()
