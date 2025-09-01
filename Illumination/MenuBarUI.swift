@@ -13,8 +13,8 @@ final class IlluminationViewModel: ObservableObject {
     @Published var userPercent: Double
 
     private let controller = BrightnessController.shared
-
     private var timer: Timer?
+    private var pollingActive = false
 
     init() {
         let defaults = UserDefaults.standard
@@ -22,15 +22,7 @@ final class IlluminationViewModel: ObservableObject {
         userPercent = controller.currentUserPercent()
         // Kick controller to apply stored state as needed
         controller.setEnabled(enabled)
-        // Light polling to keep UI in sync with non-Combine sources
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                self.enabled = UserDefaults.standard.bool(forKey: "illumination.enabled")
-                self.userPercent = self.controller.currentUserPercent()
-            }
-        }
-        RunLoop.main.add(timer!, forMode: .common)
+        // Background polling is started externally to avoid redrawing while menu is open
     }
 
     deinit { timer?.invalidate() }
@@ -48,11 +40,37 @@ final class IlluminationViewModel: ObservableObject {
         userPercent = clamped
     }
 
+    // MARK: - Polling control
+    func startBackgroundPolling() {
+        guard !pollingActive else { return }
+        pollingActive = true
+        timer?.invalidate(); timer = nil
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.enabled = UserDefaults.standard.bool(forKey: "illumination.enabled")
+                self.userPercent = self.controller.currentUserPercent()
+            }
+        }
+        if let t = timer { RunLoop.main.add(t, forMode: .common) }
+    }
+
+    func stopBackgroundPolling() {
+        pollingActive = false
+        timer?.invalidate(); timer = nil
+    }
+
     // MARK: - Derived status
     var statusText: String {
         if !enabled { return "Disabled" }
-        let pct = Int(round(userPercent))
-        return "Enabled — \(pct)%"
+        let withTile = tileEnabled
+        let withDet = hdrMode != 0
+        switch (withTile, withDet) {
+        case (true, true): return "Enabled with Tile and Detection"
+        case (true, false): return "Enabled with Tile"
+        case (false, true): return "Enabled with Detection"
+        default: return "Enabled"
+        }
     }
 
     var debugDetails: [String] {
@@ -119,11 +137,8 @@ struct IlluminationMenuBarLabel: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: vm.enabled ? "sun.max.fill" : "sun.min")
-            if vm.enabled {
-                Text("\(Int(vm.userPercent))%")
-                    .monospacedDigit()
-            }
         }
+        .task { vm.startBackgroundPolling() }
     }
 }
 
@@ -135,17 +150,23 @@ struct IlluminationMenuView: View {
             // Header (match PowerGrid: title then status line)
             Text("Illumination")
                 .font(.title).bold()
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
+                // Status text on the left
                 Text(vm.statusText).font(.caption)
                 Spacer()
+                // Status symbols on the right: Tile then HDR Detection
+                HStack(spacing: 4) {
+                    Image(systemName: "rectangle.fill")
+                    Text(tileModeDisplay(vm: vm))
+                }
+                .font(.caption)
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles.tv.fill")
+                    Text(hdrModeDisplay(vm: vm))
+                }
+                .font(.caption)
             }
             Divider().padding(.vertical, 2)
-
-            // Enabled toggle + slider
-            Toggle("Enabled", isOn: Binding(
-                get: { vm.enabled },
-                set: { vm.setEnabled($0) }
-            ))
 
             VStack(alignment: .leading) {
                 HStack {
@@ -159,13 +180,22 @@ struct IlluminationMenuView: View {
                     get: { vm.userPercent },
                     set: { vm.setPercent($0) }
                 ))
+                .disabled(!vm.enabled)
             }
 
+            // Divider below slider
+            Divider()
+
+            // Quick actions (centered and evenly spaced)
+            QuickActionsBar(vm: vm)
+
+            // Divider above Advanced
             Divider()
 
             // Footer with Advanced Options dropdown and Quit on the right
             HStack {
                 Menu("Advanced Options") {
+                    Group {
                     // Guard
                     Text("Guard").font(.caption).foregroundStyle(.secondary)
                     Toggle("Guard Mode", isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
@@ -234,6 +264,8 @@ struct IlluminationMenuView: View {
                             Text(line)
                         }
                     }
+                    }
+                    .disabled(!vm.enabled)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -245,10 +277,113 @@ struct IlluminationMenuView: View {
         }
         .padding(12)
         .frame(width: 320)
+        .onAppear { vm.stopBackgroundPolling() }
+        .onDisappear { vm.startBackgroundPolling() }
     }
 
     private func modeName(_ mode: Int) -> String {
         switch mode { case 1: return "On"; case 2: return "Auto"; case 3: return "Apps"; default: return "Off" }
+    }
+
+    private func tileModeDisplay(vm: IlluminationViewModel) -> String {
+        guard vm.enabled else { return "Off" }
+        return vm.tileEnabled ? (vm.tileFullOpacity ? "Full" : "Low") : "Off"
+    }
+
+    private func hdrModeDisplay(vm: IlluminationViewModel) -> String {
+        guard vm.enabled else { return "Off" }
+        return modeName(vm.hdrMode)
+    }
+}
+
+// MARK: - Quick Actions
+private enum TileMode: Equatable { case off, low, full }
+
+private struct QuickActionsBar: View {
+    @ObservedObject var vm: IlluminationViewModel
+
+    private var tileMode: Binding<TileMode> {
+        Binding<TileMode>(
+            get: {
+                guard vm.tileEnabled else { return .off }
+                return vm.tileFullOpacity ? .full : .low
+            },
+            set: { mode in
+                switch mode {
+                case .off:
+                    vm.setTileEnabled(false)
+                case .low:
+                    vm.setTileEnabled(true)
+                    vm.setTileFullOpacity(false)
+                case .full:
+                    vm.setTileEnabled(true)
+                    vm.setTileFullOpacity(true)
+                }
+            }
+        )
+    }
+
+    private var hdrMode: Binding<Int> {
+        Binding<Int>(get: { vm.hdrMode }, set: { vm.setHDRMode($0) })
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            // Master enable/disable (always active)
+            MultiStateActionButton<Bool>(
+                title: "Master",
+                states: [
+                    ActionState(value: false, imageName: "sun.min",      tint: .red,   help: "Disable Illumination"),
+                    ActionState(value: true,  imageName: "sun.max.fill", tint: .green, help: "Enable Illumination")
+                ],
+                selection: Binding(get: { vm.enabled }, set: { vm.setEnabled($0) }),
+                size: 48,
+                enableHaptics: true,
+                showsCaption: false,
+                isActiveProvider: { $0 }
+            )
+            Spacer(minLength: 0)
+
+            // Tile modes: Off / Low / Full
+            MultiStateActionButton<TileMode>(
+                title: "Tile",
+                states: [
+                    ActionState(value: .off,  imageName: "rectangle",       tint: .gray,   help: "Tile Off"),
+                    ActionState(value: .low,  imageName: "rectangle.fill",  tint: .yellow, help: "Tile Low Opacity"),
+                    ActionState(value: .full, imageName: "rectangle.fill",  tint: .green,  help: "Tile Full Opacity")
+                ],
+                selection: tileMode,
+                size: 48,
+                enableHaptics: true,
+                showsCaption: false,
+                isActiveProvider: { $0 != .off }
+            )
+            .disabled(!vm.enabled || !vm.tileAvailable)
+            .help(vm.tileAvailable ? "Toggle HDR Tile" : "HDR asset not found")
+            Spacer(minLength: 0)
+
+            // HDR Detection: Off / On / (Auto skipped) / Apps
+            MultiStateActionButton<Int>(
+                title: "Detection",
+                states: [
+                    ActionState(value: 0, imageName: "sparkles.tv",      tint: .gray,   help: "Detection Off"),
+                    ActionState(value: 1, imageName: "sparkles.tv.fill", tint: .green,  help: "Detection On"),
+                    ActionState(value: 2, imageName: "sparkles.tv.fill", tint: .yellow, help: "Detection Auto (skipped)"),
+                    ActionState(value: 3, imageName: "sparkles.tv.fill", tint: .blue,   help: "Detection Apps")
+                ],
+                selection: hdrMode,
+                size: 48,
+                enableHaptics: true,
+                showsCaption: false,
+                isActiveProvider: { $0 != 0 },
+                onChange: { _ in },
+                shouldSkip: { $0 == 2 }
+            )
+            .disabled(!vm.enabled)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

@@ -15,6 +15,7 @@ final class TileFeature {
 
     private var panelController: TilePanelController?
     private var observersInstalled = false
+    private var masterSuspended = false
 
     private init() {
         // Ensure asset availability is scanned at startup
@@ -66,6 +67,7 @@ final class TileFeature {
     }
 
     private func enable() {
+        guard !masterSuspended else { return }
         ensurePanelIfNeeded()
         guard let panel = panelController else { return }
         panel.open()
@@ -84,7 +86,7 @@ final class TileFeature {
     }
 
     private func applyCurrentPresentation() {
-        if !enabled { return }
+        if !enabled || masterSuspended { return }
         panelController?.updateFrame(tileSize: size, fullscreen: false)
         HDRTileManager.shared.presentSmallTile()
     }
@@ -102,5 +104,27 @@ final class TileFeature {
         if let sc = NSScreen.main { panel.reposition(to: sc) }
         panel.updateFrame(tileSize: size, fullscreen: false)
         applyCurrentPresentation()
+    }
+}
+
+// MARK: - Master enable/disable integration
+extension TileFeature {
+    func suspendForMasterDisable() {
+        masterSuspended = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            // Detach visuals without changing the user's enabled preference
+            HDRTileManager.shared.detach()
+            self.panelController?.window?.close()
+        }
+    }
+
+    func resumeAfterMasterEnable() {
+        masterSuspended = false
+        // If user preference is enabled, re-present on main thread
+        guard enabled else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.enable()
+        }
     }
 }
