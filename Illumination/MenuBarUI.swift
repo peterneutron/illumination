@@ -11,6 +11,7 @@ import Combine
 final class IlluminationViewModel: ObservableObject {
     @Published var enabled: Bool
     @Published var userPercent: Double
+    @Published var debugUnlocked: Bool = false
 
     private let controller = BrightnessController.shared
     private var timer: Timer?
@@ -148,8 +149,15 @@ struct IlluminationMenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header (match PowerGrid: title then status line)
-            Text("Illumination")
-                .font(.title).bold()
+            HStack(spacing: 0) {
+                Text("Illuminati")
+                Button(action: { vm.debugUnlocked.toggle() }) {
+                    Text("o")
+                }
+                .buttonStyle(.plain)
+                Text("n")
+            }
+            .font(.title).bold()
             HStack(spacing: 10) {
                 // Status text on the left
                 Text(vm.statusText).font(.caption)
@@ -258,10 +266,12 @@ struct IlluminationMenuView: View {
 
                     Divider()
 
-                    // Debug
-                    Menu("Debug") {
-                        ForEach(vm.debugDetails, id: \.self) { line in
-                            Text(line)
+                    // Debug (hidden unlock via title 'o')
+                    if vm.debugUnlocked {
+                        Menu("Debug") {
+                            ForEach(vm.debugDetails, id: \.self) { line in
+                                Text(line)
+                            }
                         }
                     }
                     }
