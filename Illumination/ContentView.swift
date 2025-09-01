@@ -2,8 +2,6 @@
 //  ContentView.swift
 //  Illumination
 //
-//  Created by Sebastian Oechsle on 30.08.25.
-//
 
 import SwiftUI
 
