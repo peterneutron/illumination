@@ -134,14 +134,12 @@ final class ALSManager {
             // Suspend HDR detection and Tile visuals, preserve user preferences
             if savedHDRMode == nil { savedHDRMode = BrightnessController.shared.hdrRegionSamplerModeValue() }
             BrightnessController.shared.setHDRRegionSamplerMode(0)
-            DispatchQueue.main.async { TileFeature.shared.suspendForALS() }
         } else {
             // Restore HDR detection and Tile visuals
             if let mode = savedHDRMode {
                 BrightnessController.shared.setHDRRegionSamplerMode(mode)
             }
             savedHDRMode = nil
-            DispatchQueue.main.async { TileFeature.shared.resumeAfterALS() }
         }
     }
     func noteManualOverride() { graceUntil = Date().addingTimeInterval(15.0) }
