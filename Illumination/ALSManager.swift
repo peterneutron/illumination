@@ -1,5 +1,6 @@
 import Foundation
 import IOKit
+import AppKit
 
 // MARK: - ALS Auto Profiles
 enum ALSProfile: String, CaseIterable {
@@ -130,17 +131,7 @@ final class ALSManager {
         if on == autoEnabled { return }
         autoEnabled = on
         UserDefaults.standard.set(on, forKey: autoEnabledKey)
-        if on {
-            // Suspend HDR detection and Tile visuals, preserve user preferences
-            if savedHDRMode == nil { savedHDRMode = BrightnessController.shared.hdrRegionSamplerModeValue() }
-            BrightnessController.shared.setHDRRegionSamplerMode(0)
-        } else {
-            // Restore HDR detection and Tile visuals
-            if let mode = savedHDRMode {
-                BrightnessController.shared.setHDRRegionSamplerMode(mode)
-            }
-            savedHDRMode = nil
-        }
+        // Do not change HDR detection mode here; UI/engine owns it.
     }
     func noteManualOverride() { graceUntil = Date().addingTimeInterval(15.0) }
 
@@ -179,10 +170,15 @@ final class ALSManager {
         // Percent mapping
         let target = percent(forLux: lux)
         let bc = BrightnessController.shared
-        if BrightnessController.shared.hdrRegionSamplerModeValue() >= 0 { // always true; just to reference bc
+        // Respect HDR Apps mode: if user selected Apps and an HDR-app is frontmost, pause ALS ramp (but keep ON/OFF logic).
+        let hdrMode = bc.hdrRegionSamplerModeValue()
+        let inHDRApp = ALSManager.isHDRAppFrontmost()
+        let shouldPauseRamp = (hdrMode == 3) && inHDRApp
+        if !shouldPauseRamp {
             // Smooth percent towards target
             let current = bc.currentUserPercent()
-            let step = rampStep // move toward target per sample based on profile
+            // Optionally slow down a bit when HDR duck likely active (blend policy)
+            let step = inHDRApp && hdrMode == 3 ? max(0.10, rampStep * 0.6) : rampStep
             let next = current + (target - current) * step
             bc.setUserPercent(next)
         }
@@ -233,5 +229,23 @@ final class ALSManager {
         lpState = nil
         // Reset dwell counters to avoid stale decisions after a large change
         aboveCount = 0; belowCount = 0
+    }
+}
+
+extension ALSManager {
+    // Reuse the same app lists as BrightnessController for consistency
+    static func isHDRAppFrontmost() -> Bool {
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+        let hdrApps: Set<String> = [
+            "com.apple.Photos",
+            "com.apple.QuickTimePlayerX",
+            "com.apple.TV"
+        ]
+        let browsers: Set<String> = [
+            "com.apple.Safari",
+            "com.google.Chrome",
+            "org.mozilla.firefox"
+        ]
+        return hdrApps.contains(front) || browsers.contains(front)
     }
 }

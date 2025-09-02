@@ -213,7 +213,10 @@ final class BrightnessController {
         self.hdrAwareEnabled = defaults.object(forKey: hdrAwareEnabledKey) as? Bool ?? false
         self.hdrAwareDuckPercent = defaults.object(forKey: hdrAwareDuckPercentKey) as? Double ?? 50.0
         self.hdrAwareThreshold = defaults.object(forKey: hdrAwareThresholdKey) as? Double ?? 1.5
-        self.hdrRegionSamplerMode = defaults.object(forKey: hdrRegionSamplerModeKey) as? Int ?? 0
+        var storedMode = defaults.object(forKey: hdrRegionSamplerModeKey) as? Int ?? 0
+        // Migration: remove "On" (1); map to "Apps" (3). Keep Auto (2) but hidden in UI.
+        if storedMode == 1 { storedMode = 3; defaults.set(storedMode, forKey: hdrRegionSamplerModeKey) }
+        self.hdrRegionSamplerMode = storedMode
         self.hdrDuckFadeDuration = defaults.object(forKey: hdrAwareFadeDurationKey) as? Double ?? 0.25
         // Migrate: if previous value looked like percentage (e.g. > 2.0), map to factor
         if let v = storedValue {
