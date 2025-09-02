@@ -86,6 +86,7 @@ struct MultiStateActionButton<Value: Equatable>: View {
     var shouldSkip: ((Value) -> Bool)? = nil
 
     @State private var hovering = false
+    @Environment(\.isEnabled) private var isEnabled
 
     private func nextSelection() -> Value {
         guard let idx = states.firstIndex(where: { $0.value == selection }) else {
@@ -116,7 +117,11 @@ struct MultiStateActionButton<Value: Equatable>: View {
 
     var body: some View {
         let image = currentState?.imageName ?? "questionmark"
-        let tint = currentState?.tint ?? .accentColor
+        let baseTint = currentState?.tint ?? .accentColor
+        let effectiveTint: Color = isEnabled ? baseTint : .secondary
+        let effectiveHover: Bool = isEnabled ? hovering : false
+        // When disabled, force visual Off regardless of logical selection
+        let effectiveIsOn: Bool = isEnabled ? isOn : false
 
         VStack(spacing: showsCaption ? 8 : 0) {
             Button {
@@ -133,13 +138,13 @@ struct MultiStateActionButton<Value: Equatable>: View {
             }
             .help(currentState?.help ?? title ?? image)
             .accessibilityLabel(Text(currentState?.accessibilityLabel ?? title ?? image))
-            .accessibilityValue(Text(isOn ? "On" : "Off"))
+            .accessibilityValue(Text(effectiveIsOn ? "On" : "Off"))
             .buttonStyle(
                 CircleToggleStyle(
-                    isOn: isOn,
-                    hovering: hovering,
+                    isOn: effectiveIsOn,
+                    hovering: effectiveHover,
                     size: size,
-                    tintColor: tint
+                    tintColor: effectiveTint
                 )
             )
 
@@ -151,6 +156,6 @@ struct MultiStateActionButton<Value: Equatable>: View {
                     .frame(width: size * 1.35)
             }
         }
-        .onHover { hovering = $0 }
+        .onHover { hovering = isEnabled && $0 }
     }
 }
