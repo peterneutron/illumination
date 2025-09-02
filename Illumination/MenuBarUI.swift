@@ -8,7 +8,8 @@ import AppKit
 import Combine
 
 // ViewModel bridging BrightnessController to SwiftUI
-final class IlluminationViewModel: ObservableObject {
+// ViewModel moved to its own file (IlluminationViewModel.swift)
+/* final class IlluminationViewModel: ObservableObject {
     @Published var enabled: Bool
     @Published var userPercent: Double
     @Published var debugUnlocked: Bool = false
@@ -161,7 +162,7 @@ final class IlluminationViewModel: ObservableObject {
     func setTileFullOpacity(_ on: Bool) { TileFeature.shared.fullOpacity = on; objectWillChange.send() }
     var tileSize: Int { TileFeature.shared.size }
     func setTileSize(_ px: Int) { TileFeature.shared.size = px; objectWillChange.send() }
-}
+} */
 
 // MARK: - Views
 
@@ -374,9 +375,7 @@ struct IlluminationMenuView: View {
         .onDisappear { vm.startBackgroundPolling() }
     }
 
-    private func modeName(_ mode: Int) -> String {
-        switch mode { case 2: return "Auto"; case 3: return "Apps"; default: return "Off" }
-    }
+    private func modeName(_ mode: Int) -> String { BrightnessController.modeName(mode) }
 
     private func tileModeDisplay(vm: IlluminationViewModel) -> String {
         guard (vm.enabled || vm.alsAutoEnabled) else { return "Off" }
