@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import AppKit
 
 @MainActor
 final class IlluminationViewModel: ObservableObject {
@@ -169,6 +170,36 @@ extension IlluminationViewModel {
             guard let self = self else { return }
             let saw2 = self.controller.currentGammaCapDetails().sawEDR
             self.edrUnsupportedConfirmed = !saw2
+        }
+    }
+}
+
+// MARK: - Debug helpers
+extension IlluminationViewModel {
+    var debugScreenLines: [String] {
+        return NSScreen.screens.enumerated().map { (i, s) in
+            let did = s.displayId ?? 0
+            let builtIn = (did != 0) ? (CGDisplayIsBuiltin(did) != 0) : false
+            let isMain = (s == NSScreen.main)
+            let cur = s.maximumExtendedDynamicRangeColorComponentValue
+            let ref = s.maximumReferenceExtendedDynamicRangeColorComponentValue
+            let potStr: String = {
+                if #available(macOS 14.0, *) {
+                    return String(format: "%.3f", s.maximumPotentialExtendedDynamicRangeColorComponentValue)
+                } else {
+                    return "n/a"
+                }
+            }()
+            return String(
+                format: "#%d id=%u builtin=%@ main=%@ cur=%.3f pot=%@ ref=%.3f",
+                i,
+                did,
+                builtIn ? "true" : "false",
+                isMain ? "true" : "false",
+                cur,
+                potStr,
+                ref
+            )
         }
     }
 }
