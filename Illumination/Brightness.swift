@@ -156,7 +156,7 @@ final class BrightnessController {
 
     private let technique = GammaTechnique()
     private var enabled: Bool = false
-    private var factor: Double = Double(getDeviceMaxBrightness())
+    private var factor: Double = 1.0
     private var userPercent: Double = 100.0 // 0...100 user intent
     private let safetyMargin: Double = 0.98 // base margin aimed to allow near-maximum when AB is on
     private let refSpan: Double = 0.6 // scale for reference EDR lift normalization
@@ -261,10 +261,13 @@ final class BrightnessController {
     }
 
     func setEnabled(_ enabled: Bool) {
-        self.enabled = enabled
+        // If EDR not supported, force disabled
+        let supportsEDR = currentGammaCapDetails().sawEDR
+        let request = enabled && supportsEDR
+        self.enabled = request
         // Persist master state so UI reflects changes from Auto as well
-        UserDefaults.standard.set(enabled, forKey: "illumination.enabled")
-        if enabled {
+        UserDefaults.standard.set(request, forKey: "illumination.enabled")
+        if request {
             // Resume auxiliary visuals (tile) on main thread to avoid window-thread issues
             DispatchQueue.main.async {
                 TileFeature.shared.resumeAfterMasterEnable()
@@ -373,8 +376,8 @@ final class BrightnessController {
             // Map abStaticMode to guardEnabled for compatibility with Debug UI
             return (capped, rawCap, bestRatio, adaptiveMargin, refGain, refAlpha, true, guardEnabled, guardApplied)
         }
-        // Fallback to model-based cap if EDR not reported/available
-        let fallback = Double(getDeviceMaxBrightness())
+        // Fallback if EDR not reported/available: treat as SDR-only (cap = 1.0)
+        let fallback = 1.0
         let guardApplied = guardEnabled ? guardFactor : 1.0
         let effective = fallback * guardApplied
         return (effective, fallback, 1.0, safetyMargin, 0.0, refAlpha, false, guardEnabled, guardApplied)
