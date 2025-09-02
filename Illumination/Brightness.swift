@@ -343,44 +343,57 @@ final class BrightnessController {
     }
 
     func currentGammaCapDetails() -> (cap: Double, rawCap: Double, bestRatio: Double, adaptiveMargin: Double, refGain: Double, refAlpha: Double, sawEDR: Bool, abStaticMode: Bool, guardFactor: Double) {
-        // Inspect target displays for EDR capabilities, derive cap from ratio of max/reference EDR.
+        // Determine capability from ALL screens using potential EDR
+        var anyScreenHasPotentialEDR = false
+        for s in NSScreen.screens {
+            if #available(macOS 14.0, *) {
+                if s.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0 { anyScreenHasPotentialEDR = true; break }
+            } else {
+                if s.maximumExtendedDynamicRangeColorComponentValue > 1.0 { anyScreenHasPotentialEDR = true; break }
+            }
+        }
+
+        // Derive cap from TARGET (built-in) displays only, using potential EDR
         let screens = targetDisplays()
         var bestRatio: Double = 1.0
         var bestRef: Double = 1.0
-        var bestMaxEDR: Double = 1.0
-        var sawEDR = false
+        var bestMaxPotentialEDR: Double = 1.0
         for screen in screens {
-            let maxEDR = Double(screen.maximumExtendedDynamicRangeColorComponentValue)
+            let potential: Double
+            if #available(macOS 14.0, *) {
+                potential = Double(screen.maximumPotentialExtendedDynamicRangeColorComponentValue)
+            } else {
+                potential = Double(screen.maximumExtendedDynamicRangeColorComponentValue)
+            }
             let refEDR = Double(screen.maximumReferenceExtendedDynamicRangeColorComponentValue)
-            if maxEDR > 1.0 {
-                sawEDR = true
+            if potential > 1.0 {
                 let denom = Swift.max(refEDR, 1.0)
-                let ratio = maxEDR / denom
-                if maxEDR > bestMaxEDR {
-                    bestMaxEDR = maxEDR
+                let ratio = potential / denom
+                if potential > bestMaxPotentialEDR {
+                    bestMaxPotentialEDR = potential
                     bestRatio = ratio
                     bestRef = denom
                 }
             }
         }
-        if sawEDR {
+        if bestMaxPotentialEDR > 1.0 {
             let adaptiveMargin: Double = safetyMargin
             // Reference gain (legacy; kept for debug visibility)
             let refGain = Swift.max(0.0, Swift.min(1.0, (bestRef - 1.0) / Swift.max(0.0001, refSpan)))
-            let rawCap = 1.0 + (bestMaxEDR - 1.0) * adaptiveMargin
+            let rawCap = 1.0 + (bestMaxPotentialEDR - 1.0) * adaptiveMargin
             let guardApplied = guardEnabled ? guardFactor : 1.0
             // Apply ceiling first, then guard, so guard can reduce below the ceiling
             let preClamped = Swift.min(rawCap, 1.70)
             let effectiveCap = preClamped * guardApplied
             let capped = Swift.max(1.0, effectiveCap)
             // Map abStaticMode to guardEnabled for compatibility with Debug UI
-            return (capped, rawCap, bestRatio, adaptiveMargin, refGain, refAlpha, true, guardEnabled, guardApplied)
+            return (capped, rawCap, bestRatio, adaptiveMargin, refGain, refAlpha, anyScreenHasPotentialEDR, guardEnabled, guardApplied)
         }
         // Fallback if EDR not reported/available: treat as SDR-only (cap = 1.0)
         let fallback = 1.0
         let guardApplied = guardEnabled ? guardFactor : 1.0
         let effective = fallback * guardApplied
-        return (effective, fallback, 1.0, safetyMargin, 0.0, refAlpha, false, guardEnabled, guardApplied)
+        return (effective, fallback, 1.0, safetyMargin, 0.0, refAlpha, anyScreenHasPotentialEDR, guardEnabled, guardApplied)
     }
 
     // MARK: - Poller

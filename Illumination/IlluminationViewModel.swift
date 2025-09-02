@@ -9,6 +9,7 @@ final class IlluminationViewModel: ObservableObject {
     @Published var debugUnlocked: Bool = false
     @Published var alsAutoEnabled: Bool = false
     @Published var alsAvailable: Bool = ALSManager.shared.available
+    @Published var edrUnsupportedConfirmed: Bool = false
 
     private let controller = BrightnessController.shared
     private var timer: Timer?
@@ -19,6 +20,8 @@ final class IlluminationViewModel: ObservableObject {
         userPercent = controller.currentUserPercent()
         alsAutoEnabled = ALSManager.shared.autoEnabled
         controller.setEnabled(enabled)
+        // Initial capability probe with retry before gating
+        performEDRCheckWithRetry()
     }
 
     deinit { timer?.invalidate() }
@@ -65,6 +68,10 @@ final class IlluminationViewModel: ObservableObject {
                 self.userPercent = self.controller.currentUserPercent()
                 self.alsAvailable = ALSManager.shared.available
                 self.alsAutoEnabled = ALSManager.shared.autoEnabled
+                // Keep capability in sync when polling is active
+                if self.controller.currentGammaCapDetails().sawEDR {
+                    if self.edrUnsupportedConfirmed { self.edrUnsupportedConfirmed = false }
+                }
             }
         }
         if let t = timer { RunLoop.main.add(t, forMode: .common) }
@@ -147,4 +154,21 @@ final class IlluminationViewModel: ObservableObject {
     func setTileFullOpacity(_ on: Bool) { TileFeature.shared.fullOpacity = on; objectWillChange.send() }
     var tileSize: Int { TileFeature.shared.size }
     func setTileSize(_ px: Int) { TileFeature.shared.size = px; objectWillChange.send() }
+}
+
+// MARK: - EDR capability with retry
+extension IlluminationViewModel {
+    private func performEDRCheckWithRetry() {
+        let saw = controller.currentGammaCapDetails().sawEDR
+        if saw {
+            edrUnsupportedConfirmed = false
+            return
+        }
+        // Retry once after a short delay to avoid transient 1.0 reads
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self = self else { return }
+            let saw2 = self.controller.currentGammaCapDetails().sawEDR
+            self.edrUnsupportedConfirmed = !saw2
+        }
+    }
 }
