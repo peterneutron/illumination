@@ -6,7 +6,7 @@ BUILD_DIR      := build
 ARCHIVE_PATH   := $(BUILD_DIR)/Illumination.xcarchive
 DERIVED_DATA   := $(BUILD_DIR)/DerivedData
 EXPORT_OPTS    := ExportOptions.plist
-EXPORT_PATH    := $(BUILD_DIR)/export
+EXPORT_PATH    := $(BUILD_DIR)
 
 .PHONY: all archive export clean
 
@@ -27,7 +27,7 @@ archive: $(BUILD_DIR)
 
 export: archive
 	@echo "Exporting archive -> $(EXPORT_PATH) using $(EXPORT_OPTS)"
-	@rm -rf "$(EXPORT_PATH)" && mkdir -p "$(EXPORT_PATH)"
+	#@rm -rf "$(EXPORT_PATH)" && mkdir -p "$(EXPORT_PATH)"
 	xcodebuild -exportArchive \
 		-archivePath $(ARCHIVE_PATH) \
 		-exportOptionsPlist $(EXPORT_OPTS) \
