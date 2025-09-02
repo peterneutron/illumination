@@ -259,6 +259,8 @@ final class BrightnessController {
 
     func setEnabled(_ enabled: Bool) {
         self.enabled = enabled
+        // Persist master state so UI reflects changes from Auto as well
+        UserDefaults.standard.set(enabled, forKey: "illumination.enabled")
         if enabled {
             // Resume auxiliary visuals (tile) on main thread to avoid window-thread issues
             DispatchQueue.main.async {
