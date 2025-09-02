@@ -172,7 +172,7 @@ final class ALSManager {
         let bc = BrightnessController.shared
         // Respect HDR Apps mode: if user selected Apps and an HDR-app is frontmost, pause ALS ramp (but keep ON/OFF logic).
         let hdrMode = bc.hdrRegionSamplerModeValue()
-        let inHDRApp = ALSManager.isHDRAppFrontmost()
+        let inHDRApp = HDRAppList.isFrontmostHDRApp()
         let shouldPauseRamp = (hdrMode == 3) && inHDRApp
         if !shouldPauseRamp {
             // Smooth percent towards target
@@ -232,20 +232,4 @@ final class ALSManager {
     }
 }
 
-extension ALSManager {
-    // Reuse the same app lists as BrightnessController for consistency
-    static func isHDRAppFrontmost() -> Bool {
-        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
-        let hdrApps: Set<String> = [
-            "com.apple.Photos",
-            "com.apple.QuickTimePlayerX",
-            "com.apple.TV"
-        ]
-        let browsers: Set<String> = [
-            "com.apple.Safari",
-            "com.google.Chrome",
-            "org.mozilla.firefox"
-        ]
-        return hdrApps.contains(front) || browsers.contains(front)
-    }
-}
+// (App list moved to HDRAppList)
