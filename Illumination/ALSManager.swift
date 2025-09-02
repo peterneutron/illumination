@@ -1,6 +1,21 @@
 import Foundation
 import IOKit
 
+// MARK: - ALS Auto Profiles
+enum ALSProfile: String, CaseIterable {
+    case aggressive
+    case normal
+    case conservative
+
+    var displayName: String {
+        switch self {
+        case .aggressive: return "Aggressive"
+        case .normal: return "Normal"
+        case .conservative: return "Conservative"
+        }
+    }
+}
+
 // MARK: - Ambient Light Reader (copied from ALSTest, trimmed)
 final class AmbientLightReader {
     private static let requiredPathSuffix = "/disp0@7C000000/IOMobileFramebufferShim"
@@ -57,27 +72,52 @@ final class ALSManager {
 
     // Smoothing
     private var lpState: Double? = nil
-    private let alpha = 0.2 // 0..1
+    private var alphaLP: Double { // 0..1, from profile
+        switch profile {
+        case .aggressive: return 0.30
+        case .normal: return 0.20
+        case .conservative: return 0.10
+        }
+    }
 
     private let reader: AmbientLightReader?
     private var timer: DispatchSourceTimer?
 
     // Auto mode
+    private let profileKey = "illumination.als.profile"
+    private var profile: ALSProfile = .normal
     private(set) var autoEnabled: Bool = false
     private let autoEnabledKey = "illumination.als.autoEnabled"
     private var savedHDRMode: Int? = nil
     private var graceUntil: Date = .distantPast
     private var aboveCount = 0
     private var belowCount = 0
-    private let onLux = 120.0
-    private let offLux = 80.0
-    private let onSeconds = 3.0
-    private let offSeconds = 6.0
+    // Thresholds + dwell from profile
+    private var onLux: Double {
+        switch profile { case .aggressive, .normal: return 120.0; case .conservative: return 140.0 }
+    }
+    private var offLux: Double {
+        switch profile { case .aggressive, .normal: return 80.0; case .conservative: return 60.0 }
+    }
+    private var onSeconds: Double {
+        switch profile { case .aggressive: return 1.5; case .normal: return 3.0; case .conservative: return 6.0 }
+    }
+    private var offSeconds: Double {
+        switch profile { case .aggressive: return 3.0; case .normal: return 6.0; case .conservative: return 12.0 }
+    }
+    private var rampStep: Double { // fraction toward target per sample
+        switch profile { case .aggressive: return 0.40; case .normal: return 0.25; case .conservative: return 0.15 }
+    }
 
     private init() {
         reader = AmbientLightReader()
         available = reader != nil
-        // Restore persisted Auto mode
+        // Restore profile + Auto mode
+        if let s = UserDefaults.standard.string(forKey: profileKey), let p = ALSProfile(rawValue: s) {
+            profile = p
+        } else {
+            profile = .normal
+        }
         let stored = UserDefaults.standard.object(forKey: autoEnabledKey) as? Bool ?? false
         autoEnabled = false
         setAutoEnabled(stored)
@@ -134,7 +174,7 @@ final class ALSManager {
 
     private func stop() { timer?.cancel(); timer = nil }
 
-    private func lowPass(_ x: Double) -> Double { let y = (lpState ?? x) + alpha * (x - (lpState ?? x)); lpState = y; return y }
+    private func lowPass(_ x: Double) -> Double { let y = (lpState ?? x) + alphaLP * (x - (lpState ?? x)); lpState = y; return y }
 
     private func evaluateAuto(lux: Double) {
         guard autoEnabled else { return }
@@ -144,7 +184,7 @@ final class ALSManager {
         if BrightnessController.shared.hdrRegionSamplerModeValue() >= 0 { // always true; just to reference bc
             // Smooth percent towards target
             let current = bc.currentUserPercent()
-            let step = 0.25 // move 25% toward target per sample
+            let step = rampStep // move toward target per sample based on profile
             let next = current + (target - current) * step
             bc.setUserPercent(next)
         }
@@ -183,5 +223,17 @@ final class ALSManager {
             }
         }
         return 0
+    }
+
+    // MARK: - Profile API
+    func getProfile() -> ALSProfile { profile }
+    func setProfile(_ newProfile: ALSProfile) {
+        guard newProfile != profile else { return }
+        profile = newProfile
+        UserDefaults.standard.set(newProfile.rawValue, forKey: profileKey)
+        // Reset smoothing to avoid jumpiness when alpha changes
+        lpState = nil
+        // Reset dwell counters to avoid stale decisions after a large change
+        aboveCount = 0; belowCount = 0
     }
 }
