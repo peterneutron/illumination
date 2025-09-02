@@ -58,6 +58,12 @@ final class IlluminationViewModel: ObservableObject {
         ALSManager.shared.setAutoEnabled(on)
     }
 
+    // ALS Profile
+    var alsProfileName: String { ALSManager.shared.getProfile().displayName }
+    func setALSProfileAggressive() { ALSManager.shared.setProfile(.aggressive); objectWillChange.send() }
+    func setALSProfileNormal() { ALSManager.shared.setProfile(.normal); objectWillChange.send() }
+    func setALSProfileConservative() { ALSManager.shared.setProfile(.conservative); objectWillChange.send() }
+
     // MARK: - Polling control
     func startBackgroundPolling() {
         guard !pollingActive else { return }
@@ -233,66 +239,90 @@ struct IlluminationMenuView: View {
             // Footer with Advanced Options dropdown and Quit on the right
             HStack {
                 Menu("Advanced Options") {
-                    Group {
                     // Guard
-                    Text("Guard").font(.caption).foregroundStyle(.secondary)
-                    Toggle("Guard Mode", isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
-                    Menu("Guard Factor") {
-                        ForEach([0.75, 0.85, 0.90, 0.95], id: \.self) { f in
-                            Button(String(format: "%.0f%%", f * 100.0)) { vm.setGuardFactor(f) }
+                    Group {
+                        Text("Guard").font(.caption).foregroundStyle(.secondary)
+                        Toggle("Guard Mode", isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
+                        Menu("Guard Factor") {
+                            ForEach([0.75, 0.85, 0.90, 0.95], id: \.self) { f in
+                                Button(String(format: "%.0f%%", f * 100.0)) { vm.setGuardFactor(f) }
+                            }
                         }
                     }
+                    .disabled(!vm.enabled)
 
                     Divider()
 
                     // Overlay
-                    Text("Overlay").font(.caption).foregroundStyle(.secondary)
-                    Toggle("Fullsize", isOn: Binding(get: { vm.overlayFullsize }, set: { vm.setOverlayFullsize($0) }))
-                    Menu("FPS: \(vm.overlayFPS)") {
-                        ForEach([5, 15, 30, 60], id: \.self) { fps in
-                            Button("\(fps) fps") { vm.setOverlayFPS(fps) }
+                    Group {
+                        Text("Overlay").font(.caption).foregroundStyle(.secondary)
+                        Toggle("Fullsize", isOn: Binding(get: { vm.overlayFullsize }, set: { vm.setOverlayFullsize($0) }))
+                        Menu("FPS: \(vm.overlayFPS)") {
+                            ForEach([5, 15, 30, 60], id: \.self) { fps in
+                                Button("\(fps) fps") { vm.setOverlayFPS(fps) }
+                            }
+                        }
+                        Button("EDR Nudge") { vm.edrNudge() }
+                    }
+                    .disabled(!vm.enabled)
+
+                    Divider()
+
+                    // ALS Auto (enabled when ALS available, regardless of MS)
+                    Group {
+                        Text("ALS Auto").font(.caption).foregroundStyle(.secondary)
+                        Menu("Sensitivity: \(vm.alsProfileName)") {
+                            Button("Aggressive") { vm.setALSProfileAggressive() }
+                            Button("Normal") { vm.setALSProfileNormal() }
+                            Button("Conservative") { vm.setALSProfileConservative() }
                         }
                     }
-                    Button("EDR Nudge") { vm.edrNudge() }
+                    .disabled(!vm.alsAvailable)
 
                     Divider()
 
                     // HDR
-                    Text("HDR").font(.caption).foregroundStyle(.secondary)
-                    Menu("Detection: \(modeName(vm.hdrMode))") {
-                        ForEach([(0,"Off"),(1,"On"),(2,"Auto"),(3,"Apps")], id: \.0) { m in
-                            Button(m.1) { vm.setHDRMode(m.0) }
+                    Group {
+                        Text("HDR").font(.caption).foregroundStyle(.secondary)
+                        Menu("Detection: \(modeName(vm.hdrMode))") {
+                            ForEach([(0,"Off"),(1,"On"),(2,"Auto"),(3,"Apps")], id: \.0) { m in
+                                Button(m.1) { vm.setHDRMode(m.0) }
+                            }
+                        }
+                        Menu("Duck Target: \(vm.hdrDuckPercent)%") {
+                            ForEach([30, 40, 50], id: \.self) { p in
+                                Button("\(p)%") { vm.setHDRDuckPercent(p) }
+                            }
+                        }
+                        Menu(String(format: "Threshold: %.2f", vm.hdrThreshold)) {
+                            ForEach([1.4, 1.5, 1.8, 2.0], id: \.self) { t in
+                                Button(String(format: "%.2f", t)) { vm.setHDRThreshold(t) }
+                            }
+                        }
+                        Menu("Fade: \(vm.hdrFadeMs) ms") {
+                            ForEach([200, 300, 500], id: \.self) { ms in
+                                Button("\(ms) ms") { vm.setHDRFadeMs(ms) }
+                            }
                         }
                     }
-                    Menu("Duck Target: \(vm.hdrDuckPercent)%") {
-                        ForEach([30, 40, 50], id: \.self) { p in
-                            Button("\(p)%") { vm.setHDRDuckPercent(p) }
-                        }
-                    }
-                    Menu(String(format: "Threshold: %.2f", vm.hdrThreshold)) {
-                        ForEach([1.4, 1.5, 1.8, 2.0], id: \.self) { t in
-                            Button(String(format: "%.2f", t)) { vm.setHDRThreshold(t) }
-                        }
-                    }
-                    Menu("Fade: \(vm.hdrFadeMs) ms") {
-                        ForEach([200, 300, 500], id: \.self) { ms in
-                            Button("\(ms) ms") { vm.setHDRFadeMs(ms) }
-                        }
-                    }
+                    .disabled(!vm.enabled)
 
                     Divider()
 
                     // HDR Tile
-                    Text("HDR Tile").font(.caption).foregroundStyle(.secondary)
-                    Toggle("Enable", isOn: Binding(get: { vm.tileEnabled }, set: { vm.setTileEnabled($0) }))
-                        .disabled(!vm.tileAvailable)
-                    if !vm.tileAvailable { Text("Asset not found").font(.caption).foregroundStyle(.secondary) }
-                    Menu("Size: \(vm.tileSize) px") {
-                        ForEach([64, 32, 16, 8, 4, 1], id: \.self) { s in
-                            Button("\(s) px") { vm.setTileSize(s) }
+                    Group {
+                        Text("HDR Tile").font(.caption).foregroundStyle(.secondary)
+                        Toggle("Enable", isOn: Binding(get: { vm.tileEnabled }, set: { vm.setTileEnabled($0) }))
+                            .disabled(!vm.tileAvailable)
+                        if !vm.tileAvailable { Text("Asset not found").font(.caption).foregroundStyle(.secondary) }
+                        Menu("Size: \(vm.tileSize) px") {
+                            ForEach([64, 32, 16, 8, 4, 1], id: \.self) { s in
+                                Button("\(s) px") { vm.setTileSize(s) }
+                            }
                         }
+                        Toggle("Full Opacity", isOn: Binding(get: { vm.tileFullOpacity }, set: { vm.setTileFullOpacity($0) }))
                     }
-                    Toggle("Full Opacity", isOn: Binding(get: { vm.tileFullOpacity }, set: { vm.setTileFullOpacity($0) }))
+                    .disabled(!vm.enabled)
 
                     Divider()
 
@@ -304,8 +334,6 @@ struct IlluminationMenuView: View {
                             }
                         }
                     }
-                    }
-                    .disabled(!vm.enabled)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
