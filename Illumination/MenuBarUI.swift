@@ -201,6 +201,12 @@ struct IlluminationMenuView: View {
                                 Text(line)
                             }
                             Divider()
+                            Menu("Screens") {
+                                ForEach(vm.debugScreenLines, id: \.self) { line in
+                                    Text(line)
+                                }
+                            }
+                            Divider()
                             Menu("Experimental HDR Detection") {
                                 Button("Auto") { vm.setHDRMode(2) }
                             }
