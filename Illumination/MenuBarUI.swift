@@ -220,7 +220,7 @@ struct IlluminationMenuView: View {
                 .fixedSize(horizontal: true, vertical: false) // keep icons from squeezing
             }
 
-            Divider().padding(.vertical, 2)
+            Divider()
 
             VStack(alignment: .leading) {
                 HStack {
