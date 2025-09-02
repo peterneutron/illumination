@@ -184,11 +184,14 @@ struct IlluminationMenuView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header
+            // Header with hidden debug unlock on the 'o'
             HStack(spacing: 0) {
-                Text("Illumination") // or keep your 'Illuminati' + 'o' + 'n' trick
-                    .font(.title).bold()
+                Text("Illuminati")
+                Button(action: { vm.debugUnlocked.toggle() }) { Text("o") }
+                    .buttonStyle(.plain)
+                Text("n")
             }
+            .font(.title).bold()
 
             // Status line
             HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -299,11 +302,11 @@ struct IlluminationMenuView: View {
 
                     Divider()
 
-                    // HDR
+                    // HDR (show only Off, Apps; move Auto to Debug)
                     Group {
                         Text("HDR").font(.caption).foregroundStyle(.secondary)
                         Menu("Detection: \(modeName(vm.hdrMode))") {
-                            ForEach([(0,"Off"),(1,"On"),(2,"Auto"),(3,"Apps")], id: \.0) { m in
+                            ForEach([(0,"Off"),(3,"Apps")], id: \.0) { m in
                                 Button(m.1) { vm.setHDRMode(m.0) }
                             }
                         }
@@ -350,6 +353,10 @@ struct IlluminationMenuView: View {
                             ForEach(vm.debugDetails, id: \.self) { line in
                                 Text(line)
                             }
+                            Divider()
+                            Menu("Experimental HDR Detection") {
+                                Button("Auto") { vm.setHDRMode(2) }
+                            }
                         }
                     }
                 }
@@ -368,7 +375,7 @@ struct IlluminationMenuView: View {
     }
 
     private func modeName(_ mode: Int) -> String {
-        switch mode { case 1: return "On"; case 2: return "Auto"; case 3: return "Apps"; default: return "Off" }
+        switch mode { case 2: return "Auto"; case 3: return "Apps"; default: return "Off" }
     }
 
     private func tileModeDisplay(vm: IlluminationViewModel) -> String {
@@ -457,22 +464,18 @@ private struct QuickActionsBar: View {
             .help(vm.tileAvailable ? "Toggle HDR Tile" : "HDR asset not found")
             Spacer(minLength: 0)
 
-            // HDR Detection: Off / On / (Auto skipped) / Apps
+            // HDR Detection: Off / Apps (Auto moved to Debug, On removed)
             MultiStateActionButton<Int>(
                 title: "Detection",
                 states: [
                     ActionState(value: 0, imageName: "sparkles.tv",      tint: .gray,   help: "Detection Off"),
-                    ActionState(value: 1, imageName: "sparkles.tv.fill", tint: .green,  help: "Detection On"),
-                    ActionState(value: 2, imageName: "sparkles.tv.fill", tint: .yellow, help: "Detection Auto (skipped)"),
                     ActionState(value: 3, imageName: "sparkles.tv.fill", tint: .blue,   help: "Detection Apps")
                 ],
                 selection: hdrMode,
                 size: 48,
                 enableHaptics: true,
                 showsCaption: false,
-                isActiveProvider: { $0 != 0 },
-                onChange: { _ in },
-                shouldSkip: { $0 == 2 }
+                isActiveProvider: { $0 != 0 }
             )
             .disabled(!(vm.enabled || vm.alsAutoEnabled))
             .opacity((vm.enabled || vm.alsAutoEnabled) ? 1.0 : 0.5)
