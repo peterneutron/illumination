@@ -28,7 +28,7 @@ struct IlluminationMenuView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !vm.supportsEDR {
+            if vm.edrUnsupportedConfirmed {
                 NotSupportedView()
             } else {
             // Header with hidden debug unlock on the 'o'
