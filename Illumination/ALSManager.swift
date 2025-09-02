@@ -64,6 +64,7 @@ final class ALSManager {
 
     // Auto mode
     private(set) var autoEnabled: Bool = false
+    private let autoEnabledKey = "illumination.als.autoEnabled"
     private var savedHDRMode: Int? = nil
     private var graceUntil: Date = .distantPast
     private var aboveCount = 0
@@ -76,6 +77,10 @@ final class ALSManager {
     private init() {
         reader = AmbientLightReader()
         available = reader != nil
+        // Restore persisted Auto mode
+        let stored = UserDefaults.standard.object(forKey: autoEnabledKey) as? Bool ?? false
+        autoEnabled = false
+        setAutoEnabled(stored)
         start()
     }
 
@@ -84,6 +89,7 @@ final class ALSManager {
     func setAutoEnabled(_ on: Bool) {
         if on == autoEnabled { return }
         autoEnabled = on
+        UserDefaults.standard.set(on, forKey: autoEnabledKey)
         if on {
             // Suspend HDR detection and Tile visuals, preserve user preferences
             if savedHDRMode == nil { savedHDRMode = BrightnessController.shared.hdrRegionSamplerModeValue() }
