@@ -169,7 +169,11 @@ struct IlluminationMenuBarLabel: View {
     @ObservedObject var vm: IlluminationViewModel
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: vm.enabled ? "sun.max.fill" : "sun.min")
+            let symbol: String = {
+                if vm.alsAutoEnabled { return "lightspectrum.horizontal" }
+                return vm.enabled ? "sun.max.fill" : "sun.min"
+            }()
+            Image(systemName: symbol)
         }
         .task { vm.startBackgroundPolling() }
     }
