@@ -185,6 +185,9 @@ struct IlluminationMenuView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if !vm.supportsEDR {
+                NotSupportedView()
+            } else {
             // Header with hidden debug unlock on the 'o'
             HStack(spacing: 0) {
                 Text("Illuminati")
@@ -368,11 +371,26 @@ struct IlluminationMenuView: View {
                 }
                 .keyboardShortcut("q", modifiers: .command)
             }
+            }
         }
         .padding(12)
         .frame(width: 320)
         .onAppear { vm.stopBackgroundPolling() }
         .onDisappear { vm.startBackgroundPolling() }
+    }
+
+    private struct NotSupportedView: View {
+        var body: some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Display Not Supported")
+                    .font(.title2).bold()
+                Text("This Mac/display does not report Extended Dynamic Range (EDR). Illumination targets XDR-capable displays only.")
+                    .font(.callout)
+                Button("Quit App") { NSApplication.shared.terminate(nil) }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 6)
+            }
+        }
     }
 
     private func modeName(_ mode: Int) -> String { BrightnessController.modeName(mode) }

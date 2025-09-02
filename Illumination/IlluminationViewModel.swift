@@ -91,7 +91,7 @@ final class IlluminationViewModel: ObservableObject {
 
     var debugDetails: [String] {
         let d = controller.currentGammaCapDetails()
-        let model = getModelIdentifier() ?? "—"
+        let model = SystemInfo.getModelIdentifier() ?? "—"
         let overlayFull = controller.overlayFullsizeEnabled()
         let fps = controller.overlayFPSValue()
         let currentFactor = controller.currentFactorValue()
@@ -120,6 +120,7 @@ final class IlluminationViewModel: ObservableObject {
     }
 
     // MARK: - Advanced Options wrappers
+    var supportsEDR: Bool { controller.currentGammaCapDetails().sawEDR }
     var guardEnabled: Bool { controller.isGuardEnabled() }
     func setGuardEnabled(_ on: Bool) { controller.setGuardEnabled(on); objectWillChange.send() }
     func setGuardFactor(_ factor: Double) { controller.setGuardFactor(factor); objectWillChange.send() }
