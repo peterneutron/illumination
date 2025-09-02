@@ -556,22 +556,11 @@ final class BrightnessController {
 
     private func isHDRContentLikely(bestRatioHint: Double) -> Bool {
         // Use region sampler based on mode; gate by app list in Auto/Apps.
-        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
-        let hdrApps: Set<String> = [
-            "com.apple.Photos",
-            "com.apple.QuickTimePlayerX",
-            "com.apple.TV"
-        ]
-        let browsers: Set<String> = [
-            "com.apple.Safari",
-            "com.google.Chrome",
-            "org.mozilla.firefox"
-        ]
         let mode = hdrRegionSamplerModeValue()
         // Start/stop sampler based on mode/app (Auto only)
         let mainDisplay = NSScreen.main?.displayId ?? 0
         let shouldSample: Bool = {
-            if mode == 2 { return hdrApps.contains(front) || browsers.contains(front) }
+            if mode == 2 { return HDRAppList.isFrontmostHDRApp() }
             return false
         }()
         if shouldSample, mainDisplay != 0 {
@@ -585,12 +574,16 @@ final class BrightnessController {
         case 1: // On (always duck)
             return true
         case 2: // Auto (app-gated + sampler evidence)
-            return (hdrApps.contains(front) || browsers.contains(front)) && hdrSampler.hdrPresent
+            return HDRAppList.isFrontmostHDRApp() && hdrSampler.hdrPresent
         case 3: // Apps (app-gated only)
-            return (hdrApps.contains(front) || browsers.contains(front))
+            return HDRAppList.isFrontmostHDRApp()
         default:
             return false
         }
+    }
+
+    static func modeName(_ mode: Int) -> String {
+        switch mode { case 2: return "Auto"; case 3: return "Apps"; default: return "Off" }
     }
     func setGuardEnabled(_ enabled: Bool) {
         guardEnabled = enabled
