@@ -16,6 +16,7 @@ final class TileFeature {
     private var panelController: TilePanelController?
     private var observersInstalled = false
     private var masterSuspended = false
+    private var alsSuspended = false
 
     private init() {
         // Ensure asset availability is scanned at startup
@@ -67,7 +68,7 @@ final class TileFeature {
     }
 
     private func enable() {
-        guard !masterSuspended else { return }
+        guard !masterSuspended && !alsSuspended else { return }
         ensurePanelIfNeeded()
         guard let panel = panelController else { return }
         panel.open()
@@ -86,7 +87,7 @@ final class TileFeature {
     }
 
     private func applyCurrentPresentation() {
-        if !enabled || masterSuspended { return }
+        if !enabled || masterSuspended || alsSuspended { return }
         panelController?.updateFrame(tileSize: size, fullscreen: false)
         HDRTileManager.shared.presentSmallTile()
     }
@@ -122,6 +123,23 @@ extension TileFeature {
     func resumeAfterMasterEnable() {
         masterSuspended = false
         // If user preference is enabled, re-present on main thread
+        guard enabled else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.enable()
+        }
+    }
+
+    func suspendForALS() {
+        alsSuspended = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            HDRTileManager.shared.detach()
+            self.panelController?.window?.close()
+        }
+    }
+
+    func resumeAfterALS() {
+        alsSuspended = false
         guard enabled else { return }
         DispatchQueue.main.async { [weak self] in
             self?.enable()
