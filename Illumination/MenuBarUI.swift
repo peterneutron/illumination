@@ -25,6 +25,7 @@ final class IlluminationViewModel: ObservableObject {
         let defaults = UserDefaults.standard
         enabled = defaults.object(forKey: "illumination.enabled") as? Bool ?? false
         userPercent = controller.currentUserPercent()
+        alsAutoEnabled = ALSManager.shared.autoEnabled
         // Kick controller to apply stored state as needed
         controller.setEnabled(enabled)
         // Background polling is started externally to avoid redrawing while menu is open
@@ -68,6 +69,7 @@ final class IlluminationViewModel: ObservableObject {
                 self.enabled = UserDefaults.standard.bool(forKey: "illumination.enabled")
                 self.userPercent = self.controller.currentUserPercent()
                 self.alsAvailable = ALSManager.shared.available
+                self.alsAutoEnabled = ALSManager.shared.autoEnabled
             }
         }
         if let t = timer { RunLoop.main.add(t, forMode: .common) }
