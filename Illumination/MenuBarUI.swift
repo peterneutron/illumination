@@ -92,6 +92,14 @@ final class IlluminationViewModel: ObservableObject {
         return enabled ? "Enabled" : "Disabled"
     }
 
+    var alsProfileSymbolName: String {
+        switch ALSManager.shared.getProfile() {
+        case .aggressive: return "hare.fill"
+        case .normal: return "figure.walk"
+        case .conservative: return "tortoise.fill"
+        }
+    }
+
     var debugDetails: [String] {
         let d = controller.currentGammaCapDetails()
         let model = getModelIdentifier() ?? "—"
@@ -180,10 +188,16 @@ struct IlluminationMenuView: View {
 
             // Status line
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(vm.statusText)
-                    .font(.caption)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                HStack(spacing: 6) {
+                    Text(vm.statusText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if vm.alsAutoEnabled {
+                        Image(systemName: vm.alsProfileSymbolName)
+                            .help("Automatic (\(ALSManager.shared.getProfile().displayName))")
+                    }
+                }
+                .font(.caption)
 
                 Spacer(minLength: 0)
 
