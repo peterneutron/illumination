@@ -1,0 +1,123 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{hyperref}
+\geometry{a4paper, margin=1in}
+
+\title{A Robust Real-Time Ambient Light Sensing \\ and Lux Estimation Algorithm}
+\author{Methodology derived from Swift source code analysis}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This paper details a robust algorithm for processing raw ambient light sensor (ALS) data to produce a stable and accurate estimation of environmental illuminance in lux. The methodology addresses common challenges in ambient light sensing, including sensor noise, non-linear response, saturation, and calibration drift. The core of the algorithm is a dual-model approach that intelligently blends a direct power-law calibration model with a day-adaptive relative model. Advanced techniques such as profile-dependent exponential smoothing, saturation synthesis, and confidence-based model blending are employed to ensure high-quality output suitable for automatic display brightness control systems.
+\end{abstract}
+
+\section{Introduction}
+Ambient light sensors are ubiquitous in modern computing devices for enabling automatic display brightness adjustment. A naive implementation, however, often results in a poor user experience due to noisy sensor readings and abrupt changes. This paper documents a sophisticated, multi-stage signal processing pipeline designed to convert raw, fixed-point sensor output into a perceptually stable lux estimate.
+
+The process can be broken down into four key stages:
+\begin{enumerate}
+    \item \textbf{Preprocessing:} Decoding raw sensor values and handling invalid or saturated data.
+    \item \textbf{Smoothing:} Applying a time-delta-aware Exponential Moving Average (EMA) filter to the decoded sensor counts.
+    \item \textbf{Lux Estimation:} Calculating illuminance using a novel dual-model blending strategy.
+    \item \textbf{Saturation Handling:} Synthesizing plausible sensor data when the physical sensor is saturated.
+\end{enumerate}
+
+\section{Sensor Data Preprocessing}
+\subsection{Fixed-Point Decoding}
+The raw sensor output, $R$, is provided as an integer value representing a fixed-point number. The decoded sensor value in "counts-space", denoted as $x$, is obtained by scaling $R$ by a fixed divisor.
+
+Let $k_{shift}$ be the number of fractional bits in the fixed-point representation (e.g., 20). The divisor is $D = 2^{k_{shift}}$. The decoded value is:
+\begin{equation}
+    x = \frac{R}{D}
+\end{equation}
+This value $x$ is clamped to a maximum plausible pre-sentinel value, $x_{max}$ (e.g., 2047.0), to prevent overflow from corrupting the signal.
+
+\subsection{Dark-Level Correction}
+Sensors exhibit a baseline reading in complete darkness. This dark-level count, $x_{dark}$, is subtracted from the decoded value to get the differential count, $\Delta x$, which is proportional to the incident light.
+\begin{equation}
+    \Delta x = \max(0, x - x_{dark})
+\end{equation}
+This $\Delta x$ serves as the primary input for the subsequent estimation models.
+
+\section{Dynamic Smoothing Filter}
+To mitigate sensor noise and prevent rapid fluctuations, a time-delta-aware Exponential Moving Average (EMA) filter is applied to the decoded counts, $x$. Let $y_t$ be the smoothed value at the current time step $t$, and $y_{t-1}$ be the value from the previous step.
+
+The smoothing factor, $\alpha$, is dynamically calculated based on the time elapsed, $\Delta t$, since the last sample and a profile-dependent time constant, $\tau$.
+\begin{equation}
+    \alpha = 1 - e^{-\Delta t / \tau}
+\end{equation}
+An additional multiplier, $m$, can be applied to further tune the filter's responsiveness (attack/decay).
+\begin{equation}
+    \alpha_{eff} = \min(1.0, \alpha \cdot m)
+\end{equation}
+The EMA update equation is then:
+\begin{equation}
+    y_t = y_{t-1} + \alpha_{eff} \cdot (x_t - y_{t-1})
+\end{equation}
+The initial state, $y_0$, is seeded with the first valid sensor reading, $x_0$. Let the output of this filter be denoted $x_{smooth}$.
+
+\section{Dual-Model Lux Estimation}
+The core of the algorithm is a weighted blend of two distinct models: a direct calibration model ($L_{fit}$) and a day-adaptive relative model ($L_{rel}$).
+\begin{equation}
+    L_{est} = (1 - w) \cdot L_{fit} + w \cdot L_{rel}
+\end{equation}
+where $w$ is a confidence-based blending weight.
+
+\subsection{Model 1: Direct Power-Law Calibration ($L_{fit}$)}
+This model maps the smoothed, dark-corrected sensor counts to lux using a power-law relationship, which is common for light sensors.
+\begin{equation}
+    L_{fit} = a \cdot (\max(0, x_{smooth} - x_{dark}))^p
+\end{equation}
+where $a$ is a scaling coefficient and $p$ is the power-law exponent. These parameters are determined through a two-point calibration process.
+
+\subsection{Model 2: Day-Adaptive Relative Model ($L_{rel}$)}
+This model provides robustness against calibration inaccuracies, particularly in very bright conditions. It estimates lux based on the current sensor reading's position relative to the maximum reading observed throughout the day.
+
+First, a rolling maximum of the differential count, $\Delta x_{max}$, is maintained with a slow decay factor to adapt to changing ambient conditions over a long period.
+\begin{equation}
+    \Delta x_{max, t} = \max(\Delta x_{max, t-1} \cdot k_{decay}, \Delta x_t)
+\end{equation}
+
+Next, a normalized relative intensity, $\hat{x}$, is calculated:
+\begin{equation}
+    \hat{x} = \min\left(1, \frac{\Delta x}{\Delta x_{max}}\right)
+\end{equation}
+
+This normalized value is then mapped to a plausible lux range (e.g., 50 to 100,000 lux) using a power curve to model perceptual brightness.
+\begin{equation}
+    L_{rel} = L_{min} + (L_{max} - L_{min}) \cdot \hat{x}^{\gamma}
+\end{equation}
+where $\gamma$ is a shaping exponent (e.g., 1.45).
+
+\subsection{Confidence-Based Model Blending}
+The blending weight $w$ determines the contribution of the relative model ($L_{rel}$). The system's "confidence" in the day-max value ($\Delta x_{max}$) is low until a sufficiently bright light source (presumably the sun) has been observed.
+
+Confidence, $C$, is calculated as a function of $\Delta x_{max}$ relative to a sun-trigger threshold, $T_{sun}$.
+\begin{equation}
+    C = \min\left(1, \frac{\max(0, \Delta x_{max} - T_{sun})}{x_{max} - T_{sun}}\right)
+\end{equation}
+The blending weight $w$ is then a fraction of this confidence, capped at a maximum value $w_{max}$ (e.g., 0.25).
+\begin{equation}
+    w = w_{max} \cdot C
+\end{equation}
+This ensures $L_{rel}$ only contributes significantly after the system has "seen" a bright environment and has established a reliable $\Delta x_{max}$.
+
+\section{Saturation Synthesis}
+When the sensor is saturated, it returns a fixed maximum value. To prevent the lux estimate from stalling, the algorithm synthesizes a surrogate sensor value.
+
+If saturation persists for a duration $T_{sat}$, a surrogate count, $x_{surrogate}$, is generated. This value is designed to be slightly higher than the last known good reading, $x_{last\_good}$, and also respects the current day-max value.
+\begin{equation}
+    x_{surrogate} = \min\left(x_{max}, \max(x_{last\_good} \cdot k_{boost}, x_{dark} + \max(\Delta x_{max} \cdot 1.05, F_{sat}))\right)
+\end{equation}
+where $k_{boost}$ is a boost factor (e.g., 1.15) and $F_{sat}$ is a saturation floor in counts-space (e.g., 1200.0). This surrogate value is then fed into the EMA filter, causing the lux estimate to continue rising in a plausible manner despite the saturated sensor.
+
+\section{Conclusion}
+This paper has outlined a comprehensive and resilient algorithm for ambient light sensing. By combining a calibrated physical model with an adaptive relative model, it achieves robustness against sensor limitations and environmental variability. The inclusion of dynamic smoothing, confidence-based blending, and intelligent saturation handling demonstrates a sophisticated approach that prioritizes a stable and perceptually accurate illuminance estimate, making it highly suitable for mission-critical applications like automatic display brightness and tone mapping.
+
+\end{document}
