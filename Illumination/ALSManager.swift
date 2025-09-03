@@ -4,12 +4,16 @@ import AppKit
 
 // MARK: - ALS Auto Profiles
 enum ALSProfile: String, CaseIterable {
+    case earliest
+    case earlier
     case aggressive
     case normal
     case conservative
 
     var displayName: String {
         switch self {
+        case .earliest: return "Earliest"
+        case .earlier: return "Earlier"
         case .aggressive: return "Aggressive"
         case .normal: return "Normal"
         case .conservative: return "Conservative"
@@ -210,6 +214,30 @@ final class ALSManager {
     private var pendingPercent: Double? = nil
     // Remember the user/system brightness percent before we enable EDR
     private var preEDRUserPercent: Double? = nil
+
+    // EDR entry behavior
+    private var edrEnabledAt: Date? = nil
+    private var edrDisabledAt: Date? = nil
+    private var entryMinPercent: Double { // minimum percent at entry (1%)
+        let v = UserDefaults.standard.object(forKey: "illumination.als.entry.minPercent") as? Double ?? 1.0
+        return max(0.0, min(10.0, v))
+    }
+    private var entryEnvelopeSeconds: Double { // seconds to fully lift entry cap
+        let v = UserDefaults.standard.object(forKey: "illumination.als.entry.envelopeSeconds") as? Double ?? 1.5
+        return max(0.1, min(5.0, v))
+    }
+    private var maxPercentPerSecond: Double { // slope limiter for %/s
+        let v = UserDefaults.standard.object(forKey: "illumination.als.maxPercentPerSecond") as? Double ?? 50.0
+        return max(5.0, min(200.0, v))
+    }
+    private var minOnSecondsGuard: Double { // minimum time to stay ON once enabled
+        let v = UserDefaults.standard.object(forKey: "illumination.als.minOnSeconds") as? Double ?? 1.5
+        return max(0.0, min(10.0, v))
+    }
+    private var minOffSecondsGuard: Double { // minimum time to stay OFF once disabled
+        let v = UserDefaults.standard.object(forKey: "illumination.als.minOffSeconds") as? Double ?? 1.5
+        return max(0.0, min(10.0, v))
+    }
     
     // Debug snapshot (exposed for Debug menu)
     private(set) var debugDecodedX: Double? = nil
@@ -224,6 +252,8 @@ final class ALSManager {
         // Thresholds for enabling Illumination (EDR overlay) per profile
         // Aggressive trips earlier; Conservative requires stronger daylight
         switch profile {
+        case .earliest:     return 8_000.0   // very early
+        case .earlier:      return 12_000.0  // early
         case .aggressive:   return 15_000.0  // bright window / light shade
         case .normal:       return 25_000.0  // shade → outdoor
         case .conservative: return 35_000.0  // strong daylight only
@@ -232,6 +262,8 @@ final class ALSManager {
     private var offLux: Double {
         // Hysteresis off thresholds per profile
         switch profile {
+        case .earliest:     return 5_000.0
+        case .earlier:      return 8_000.0
         case .aggressive:   return 10_000.0
         case .normal:       return 18_000.0
         case .conservative: return 25_000.0
@@ -240,6 +272,8 @@ final class ALSManager {
     private var onSeconds: Double {
         // Dwell time before turning ON (shorter outside for snappy response)
         switch profile {
+        case .earliest:     return 1.0
+        case .earlier:      return 1.0
         case .aggressive:   return 1.0
         case .normal:       return 2.0
         case .conservative: return 3.0
@@ -248,13 +282,21 @@ final class ALSManager {
     private var offSeconds: Double {
         // Dwell time before turning OFF (longer to avoid flapping under passing clouds)
         switch profile {
+        case .earliest:     return 2.0
+        case .earlier:      return 3.0
         case .aggressive:   return 2.0
         case .normal:       return 4.0
         case .conservative: return 6.0
         }
     }
     private var rampStep: Double { // fraction toward target per sample
-        switch profile { case .aggressive: return 0.40; case .normal: return 0.25; case .conservative: return 0.15 }
+        switch profile {
+        case .earliest: return 0.50
+        case .earlier: return 0.45
+        case .aggressive: return 0.40
+        case .normal: return 0.25
+        case .conservative: return 0.15
+        }
     }
 
     private init() {
@@ -423,6 +465,8 @@ final class ALSManager {
     @inline(__always)
     private func smoothingParams() -> (tau: Double, mult: Double) {
         switch profile {
+        case .earliest:     return (1.5, 1.6)  // quickest
+        case .earlier:      return (1.6, 1.55)
         case .aggressive:   return (1.8, 1.5)  // quicker attack
         case .normal:       return (3.5, 1.0)
         case .conservative: return (6.0, 0.8)  // extra calm indoors
@@ -482,7 +526,22 @@ final class ALSManager {
             if !shouldPauseRamp {
                 let current = bc.currentUserPercent()
                 let step = inHDRApp && hdrMode == 3 ? max(0.10, rampStep * 0.6) : rampStep
-                let next = current + (target - current) * step
+                // Entry envelope: cap allowed percent during first seconds after enable
+                var allowed = 100.0
+                if let t0 = edrEnabledAt {
+                    let elapsed = Date().timeIntervalSince(t0)
+                    let slope = (100.0 - entryMinPercent) / max(0.1, entryEnvelopeSeconds)
+                    allowed = min(100.0, entryMinPercent + slope * elapsed)
+                }
+                var desired = min(target, allowed)
+                // Maintain minimum while on
+                desired = max(entryMinPercent, desired)
+                // Ramp and slope-limit
+                let dt = 1.0 / max(0.001, sampleHz)
+                var next = current + (desired - current) * step
+                let maxDelta = maxPercentPerSecond * dt
+                next = current + max(-maxDelta, min(maxDelta, next - current))
+                next = max(entryMinPercent, min(100.0, next))
                 bc.setUserPercent(next)
             }
             // Clear any staged target once we’re actively controlling
@@ -510,48 +569,45 @@ final class ALSManager {
         }
 
         if !isOn && aboveCount >= onCountReq {
-            // Capture current slider percent as the value to restore when we later disable EDR
-            if preEDRUserPercent == nil {
-                preEDRUserPercent = bc.currentUserPercent()
-            }
-            bc.setEnabled(true)
-            // Apply the staged target immediately so the user sees the boost as EDR engages
-            if let staged = pendingPercent {
-                bc.setUserPercent(staged)
-                pendingPercent = nil
+            // Enforce minimum OFF time before enabling
+            if let tOff = edrDisabledAt, Date().timeIntervalSince(tOff) < minOffSecondsGuard {
+                // wait a bit longer before re-enabling
             } else {
-                // Fall back to a fresh target from current lux
-                bc.setUserPercent(target)
+                bc.setEnabled(true)
+                edrEnabledAt = Date()
+                // Start gently at entry minimum
+                bc.setUserPercent(entryMinPercent)
             }
             aboveCount = 0; belowCount = 0
         } else if isOn && belowCount >= offCountReq {
-            // Restore the pre-EDR SDR brightness percent when turning EDR OFF
-            if let prev = preEDRUserPercent {
-                bc.setUserPercent(prev)
-                preEDRUserPercent = nil
+            // Enforce minimum ON time before disabling
+            if let tOn = edrEnabledAt, Date().timeIntervalSince(tOn) < minOnSecondsGuard {
+                // remain ON a bit longer
+            } else {
+                // Turn EDR OFF and set percent to 0
+                bc.setEnabled(false)
+                edrDisabledAt = Date()
+                edrEnabledAt = nil
+                bc.setUserPercent(0.0)
             }
-            bc.setEnabled(false)
-            // Do not move the slider further in SDR; keep last percent staged for the next ON
             aboveCount = 0; belowCount = 0
         }
     }
 
-    /// Note: brightness anchors target indoor SDR range and saturate at 4000 lux; we only drive this curve while EDR is ON. Beyond ~4k lux, readability is handled by EDR headroom.
-    // Piecewise linear mapping for lux → percent (your anchors retained)
+    /// Smooth onLux-relative mapping for lux → EDR percent.
+    /// - At L = onLux: ~entryMinPercent
+    /// - At L ≈ 3×onLux: ~50–70%
+    /// - At L ≈ 10×onLux: ~85–95%
+    /// - Approaches 100% asymptotically for extreme L
     private func percent(forLux lux: Double) -> Double {
-        let anchors: [(Double, Double)] = [
-            (0, 0), (150, 20), (300, 40), (600, 60), (1000, 75), (2000, 90), (4000, 100)
-        ]
-        if lux <= anchors.first!.0 { return anchors.first!.1 }
-        if lux >= anchors.last!.0 { return anchors.last!.1 }
-        for i in 0..<(anchors.count - 1) {
-            let a = anchors[i], b = anchors[i+1]
-            if lux >= a.0 && lux <= b.0 {
-                let t = (lux - a.0) / max(1.0, (b.0 - a.0))
-                return a.1 + (b.1 - a.1) * t
-            }
-        }
-        return 0
+        let L_on = max(1.0, onLux)
+        let p0 = entryMinPercent
+        if lux <= L_on { return p0 }
+        let L_hi = L_on * 10.0
+        let r = min(1.0, max(0.0, log(lux / L_on) / max(1e-6, log(L_hi / L_on))))
+        // smoothstep
+        let s = r * r * (3.0 - 2.0 * r)
+        return p0 + (100.0 - p0) * s
     }
 
     // MARK: - Profile API
@@ -565,4 +621,68 @@ final class ALSManager {
         lpState = nil
         aboveCount = 0; belowCount = 0
     }
+
+    // MARK: - Debug tuners API
+    func setEntryMinPercent(_ p: Double) { UserDefaults.standard.set(max(0.0, min(10.0, p)), forKey: "illumination.als.entry.minPercent") }
+    func setEntryEnvelopeSeconds(_ s: Double) { UserDefaults.standard.set(max(0.1, min(5.0, s)), forKey: "illumination.als.entry.envelopeSeconds") }
+    func setMaxPercentPerSecond(_ v: Double) { UserDefaults.standard.set(max(5.0, min(200.0, v)), forKey: "illumination.als.maxPercentPerSecond") }
+    func setMinOnSeconds(_ v: Double) { UserDefaults.standard.set(max(0.0, min(10.0, v)), forKey: "illumination.als.minOnSeconds") }
+    func setMinOffSeconds(_ v: Double) { UserDefaults.standard.set(max(0.0, min(10.0, v)), forKey: "illumination.als.minOffSeconds") }
+
+    func entryMinPercentValue() -> Double { entryMinPercent }
+    func entryEnvelopeSecondsValue() -> Double { entryEnvelopeSeconds }
+    func maxPercentPerSecondValue() -> Double { maxPercentPerSecond }
+    func minOnSecondsValue() -> Double { minOnSecondsGuard }
+    func minOffSecondsValue() -> Double { minOffSecondsGuard }
+
+    // MARK: - Calibration helper
+    struct CalibAnchor: Codable { let dx: Double; let lux: Double }
+    private let anchorAKey = "illumination.als.calib.anchorA"
+    private let anchorBKey = "illumination.als.calib.anchorB"
+    private func saveAnchor(_ a: CalibAnchor?, key: String) {
+        if let a = a, let data = try? JSONEncoder().encode(a) {
+            UserDefaults.standard.set(data, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+    private func loadAnchor(key: String) -> CalibAnchor? {
+        if let data = UserDefaults.standard.data(forKey: key), let a = try? JSONDecoder().decode(CalibAnchor.self, from: data) { return a }
+        return nil
+    }
+    func calibAnchorA() -> CalibAnchor? { loadAnchor(key: anchorAKey) }
+    func calibAnchorB() -> CalibAnchor? { loadAnchor(key: anchorBKey) }
+    func clearAnchors() { saveAnchor(nil, key: anchorAKey); saveAnchor(nil, key: anchorBKey) }
+    func setDarkFromCurrent() {
+        guard let x = debugDecodedX else { return }
+        var c = calibrator
+        c.xDark = x
+        c.save()
+        calibrator = LuxCalibrator.load()
+    }
+    func setAnchorAFromCurrent(lux: Double) {
+        guard let x = debugDecodedX else { return }
+        let dx = max(0.0, x - calibrator.xDark)
+        guard dx > 1e-6 else { return }
+        saveAnchor(CalibAnchor(dx: dx, lux: lux), key: anchorAKey)
+    }
+    func setAnchorBFromCurrent(lux: Double) {
+        guard let x = debugDecodedX else { return }
+        let dx = max(0.0, x - calibrator.xDark)
+        guard dx > 1e-6 else { return }
+        saveAnchor(CalibAnchor(dx: dx, lux: lux), key: anchorBKey)
+    }
+    func fitCalibrationFromAnchors() {
+        guard let A = calibAnchorA(), let B = calibAnchorB() else { return }
+        guard A.dx > 1e-6, B.dx > 1e-6, A.lux > 1e-6, B.lux > 1e-6, A.dx != B.dx else { return }
+        let p = log(B.lux / A.lux) / log(B.dx / A.dx)
+        let pClamped = max(0.8, min(1.8, p))
+        let a = A.lux / pow(A.dx, pClamped)
+        var c = calibrator
+        c.a = a
+        c.p = pClamped
+        c.save()
+        calibrator = LuxCalibrator.load()
+    }
+    func resetCalibration() { calibrator = LuxCalibrator(); calibrator.save() }
 }
