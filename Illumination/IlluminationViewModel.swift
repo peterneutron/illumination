@@ -93,8 +93,8 @@ final class IlluminationViewModel: ObservableObject {
 
     var alsProfileSymbolName: String {
         switch ALSManager.shared.getProfile() {
-        case .earliest: return "bolt.fill"
-        case .earlier: return "hare"
+        case .earliest: return "airplane"
+        case .earlier: return "car.fill"
         case .aggressive: return "hare.fill"
         case .normal: return "figure.walk"
         case .conservative: return "tortoise.fill"
