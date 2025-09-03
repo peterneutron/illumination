@@ -140,6 +140,8 @@ struct IlluminationMenuView: View {
                     Group {
                         Text("ALS Auto").font(.caption).foregroundStyle(.secondary)
                         Menu("Sensitivity: \(vm.alsProfileName)") {
+                            Button("Earliest") { vm.setALSProfileEarliest() }
+                            Button("Earlier") { vm.setALSProfileEarlier() }
                             Button("Aggressive") { vm.setALSProfileAggressive() }
                             Button("Normal") { vm.setALSProfileNormal() }
                             Button("Conservative") { vm.setALSProfileConservative() }
@@ -199,6 +201,62 @@ struct IlluminationMenuView: View {
                         Menu("Debug") {
                             ForEach(vm.debugDetails, id: \.self) { line in
                                 Text(line)
+                            }
+                            Divider()
+                            Menu("ALS Tuning") {
+                                // Entry Min Percent
+                                Menu("Entry Min: \(vm.entryMinPercent)%") {
+                                    ForEach([1,2,5,10], id: \.self) { p in
+                                        Button("\(p)%") { vm.setEntryMinPercent(p) }
+                                    }
+                                }
+                                // Entry Envelope Seconds
+                                Menu(String(format: "Entry Envelope: %.1fs", vm.entryEnvelopeSeconds)) {
+                                    ForEach([0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
+                                        Button(String(format: "%.1fs", s)) { vm.setEntryEnvelopeSeconds(s) }
+                                    }
+                                }
+                                // Slope Limit
+                                Menu("Max Slope: \(vm.maxPercentPerSecond)%/s") {
+                                    ForEach([20, 40, 50, 80, 100], id: \.self) { v in
+                                        Button("\(v)%/s") { vm.setMaxPercentPerSecond(v) }
+                                    }
+                                }
+                                // Min On/Off Guards
+                                Menu(String(format: "Min On: %.1fs", vm.minOnSeconds)) {
+                                    ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
+                                        Button(String(format: "%.1fs", s)) { vm.setMinOnSeconds(s) }
+                                    }
+                                }
+                                Menu(String(format: "Min Off: %.1fs", vm.minOffSeconds)) {
+                                    ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
+                                        Button(String(format: "%.1fs", s)) { vm.setMinOffSeconds(s) }
+                                    }
+                                }
+                            }
+                            Divider()
+                            Menu("Calibration") {
+                                Group {
+                                    Text("Quick Fit").font(.caption).foregroundStyle(.secondary)
+                                    Button("Set xDark from Current") { vm.calibSetDarkFromCurrent() }
+                                }
+                                Divider()
+                                Group {
+                                    Text("Anchor A (indoors)").font(.caption).foregroundStyle(.secondary)
+                                    ForEach([200.0, 500.0, 1000.0], id: \.self) { L in
+                                        Button(String(format: "Set Current → %.0f lx", L)) { vm.calibSetAnchorA(L) }
+                                    }
+                                }
+                                Group {
+                                    Text("Anchor B (bright)").font(.caption).foregroundStyle(.secondary)
+                                    ForEach([5000.0, 20000.0, 50000.0], id: \.self) { L in
+                                        Button(String(format: "Set Current → %.0f lx", L)) { vm.calibSetAnchorB(L) }
+                                    }
+                                }
+                                Divider()
+                                Button("Fit and Save") { vm.calibFitAndSave() }
+                                Button("Clear Anchors") { vm.calibClearAnchors() }
+                                Button("Reset Defaults") { vm.calibResetDefaults() }
                             }
                             Divider()
                             Menu("Screens") {
@@ -418,7 +476,8 @@ private struct LivePercentLabel: NSViewRepresentable {
         func start(label: NSTextField) {
             timer?.invalidate(); timer = nil
             timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-                let pct = Int(round(BrightnessController.shared.currentUserPercent()))
+                let bc = BrightnessController.shared
+                let pct = bc.appIsEnabled() ? Int(round(bc.currentUserPercent())) : 0
                 label.stringValue = "\(pct)%"
             }
             if let t = timer { RunLoop.main.add(t, forMode: .eventTracking) }

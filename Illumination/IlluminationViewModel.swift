@@ -53,6 +53,8 @@ final class IlluminationViewModel: ObservableObject {
 
     // ALS Profile
     var alsProfileName: String { ALSManager.shared.getProfile().displayName }
+    func setALSProfileEarliest() { ALSManager.shared.setProfile(.earliest); objectWillChange.send() }
+    func setALSProfileEarlier() { ALSManager.shared.setProfile(.earlier); objectWillChange.send() }
     func setALSProfileAggressive() { ALSManager.shared.setProfile(.aggressive); objectWillChange.send() }
     func setALSProfileNormal() { ALSManager.shared.setProfile(.normal); objectWillChange.send() }
     func setALSProfileConservative() { ALSManager.shared.setProfile(.conservative); objectWillChange.send() }
@@ -91,6 +93,8 @@ final class IlluminationViewModel: ObservableObject {
 
     var alsProfileSymbolName: String {
         switch ALSManager.shared.getProfile() {
+        case .earliest: return "bolt.fill"
+        case .earlier: return "hare"
         case .aggressive: return "hare.fill"
         case .normal: return "figure.walk"
         case .conservative: return "tortoise.fill"
@@ -139,6 +143,28 @@ final class IlluminationViewModel: ObservableObject {
         }
         return lines
     }
+
+    // MARK: - Debug Tuners (ALS)
+    var entryMinPercent: Int { Int(round(ALSManager.shared.entryMinPercentValue())) }
+    func setEntryMinPercent(_ p: Int) { ALSManager.shared.setEntryMinPercent(Double(p)); objectWillChange.send() }
+    var entryEnvelopeSeconds: Double { ALSManager.shared.entryEnvelopeSecondsValue() }
+    func setEntryEnvelopeSeconds(_ s: Double) { ALSManager.shared.setEntryEnvelopeSeconds(s); objectWillChange.send() }
+    var maxPercentPerSecond: Int { Int(round(ALSManager.shared.maxPercentPerSecondValue())) }
+    func setMaxPercentPerSecond(_ v: Int) { ALSManager.shared.setMaxPercentPerSecond(Double(v)); objectWillChange.send() }
+    var minOnSeconds: Double { ALSManager.shared.minOnSecondsValue() }
+    func setMinOnSeconds(_ s: Double) { ALSManager.shared.setMinOnSeconds(s); objectWillChange.send() }
+    var minOffSeconds: Double { ALSManager.shared.minOffSecondsValue() }
+    func setMinOffSeconds(_ s: Double) { ALSManager.shared.setMinOffSeconds(s); objectWillChange.send() }
+
+    // MARK: - Calibration Helper
+    var calibA: ALSManager.CalibAnchor? { ALSManager.shared.calibAnchorA() }
+    var calibB: ALSManager.CalibAnchor? { ALSManager.shared.calibAnchorB() }
+    func calibSetDarkFromCurrent() { ALSManager.shared.setDarkFromCurrent(); objectWillChange.send() }
+    func calibSetAnchorA(_ lux: Double) { ALSManager.shared.setAnchorAFromCurrent(lux: lux); objectWillChange.send() }
+    func calibSetAnchorB(_ lux: Double) { ALSManager.shared.setAnchorBFromCurrent(lux: lux); objectWillChange.send() }
+    func calibFitAndSave() { ALSManager.shared.fitCalibrationFromAnchors(); objectWillChange.send() }
+    func calibClearAnchors() { ALSManager.shared.clearAnchors(); objectWillChange.send() }
+    func calibResetDefaults() { ALSManager.shared.resetCalibration(); objectWillChange.send() }
 
     // MARK: - Advanced Options wrappers
     var supportsEDR: Bool { controller.currentGammaCapDetails().sawEDR }
