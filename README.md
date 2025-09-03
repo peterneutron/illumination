@@ -16,7 +16,7 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
 
 - Auto-Detection of EDR capable displays. ⚠️ Only Built-In at the moment ⚠️
 - Seamless System Integration: Illumination is designed to work with the native macOS auto-brightness feature enabled.
-- Live Lux Display: Get a real-time readout of the ambient light level (in lux) directly from your Mac's built-in sensor.
+- Calibrated Lux Estimate (no private APIs): Real-time illuminance (lux) computed from macOS’s internal AmbientBrightness signal using physics-based calibration, time-constant smoothing, sentinel handling, and a gated day-max blend—robust indoors to full sun, entitlement-free.
 - Extended Dynamic Range (EDR): Go beyond the standard SDR brightness limits.
 - Ambient Light Sensing (ALS): Automatically toggles EDR and adjusts brightness based on your ambient lighting. Choose from multiple sensitivity profiles (Aggressive, Normal, Conservative) to match your preference.
 - HDR-Aware Ducking: A standout feature that automatically reduces the brightness boost when HDR content is detected. This preserves the creative intent of HDR media without requiring manual intervention. ⚠️ Partially working ⚠️
