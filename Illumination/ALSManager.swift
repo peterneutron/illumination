@@ -19,7 +19,7 @@ enum ALSProfile: String, CaseIterable {
 
 // MARK: - Internal sample representation
 private enum ALSSample {
-    case value(Double)   // lux-like after fixed-point decode
+    case value(Double)   // decoded sensor counts (fixed-point X-space)
     case saturated       // driver returned a sentinel / overflow
     case invalid         // missing/garbage
 }
@@ -58,10 +58,10 @@ private let kFixedPointShift = 20.0                // 12.20-ish fixed point
 private let kFixedPointDiv  = pow(2.0, kFixedPointShift) // 1,048,576.0
 private let kSentinelU32    = UInt32(Int32.max)    // 0x7FFFFFFF
 private let kSentinelGuard  = UInt32(0x7FFFFF00)   // treat near-top as saturated too
-private let kMaxPlausibleLux = 120_000.0           // sanity clamp
-private let kMaxDecodedX: Double = 2047.0       // ≈ INT32_MAX / 2^20, safe pre-sentinel ceiling (sensor-space counts)
+private let kMaxPlausibleLux = 120_000.0           // sanity clamp (physical lux)
+private let kMaxDecodedX: Double = 2047.0          // ≈ INT32_MAX / 2^20, safe pre-sentinel ceiling (sensor-space counts)
 
-// Decode helper for the undocumented IOReg key (fixed-point counts → lux-like)
+// Decode helper for the undocumented IOReg key (fixed-point → decoded counts in X-space)
 private func decodeAmbientBrightness(_ prop: Any) -> ALSSample {
     // CFNumber path
     if let n = prop as? NSNumber {
@@ -69,18 +69,20 @@ private func decodeAmbientBrightness(_ prop: Any) -> ALSSample {
         // guard rails
         if raw >= Int64(Int32.max) - 16 { return .saturated }
         if raw < 0 { return .invalid }
-        let lux = Double(raw) / kFixedPointDiv
-        guard lux.isFinite else { return .invalid }
-        return .value(min(lux, kMaxPlausibleLux))
+        let decodedX = Double(raw) / kFixedPointDiv
+        guard decodedX.isFinite else { return .invalid }
+        // Clamp in sensor-space (counts), not physical lux
+        return .value(min(decodedX, kMaxDecodedX))
     }
     // CFData path (assume LE UInt32 payload)
     if let d = prop as? Data, d.count >= 4 {
         let rawLE = d.withUnsafeBytes { $0.load(as: UInt32.self) }
         let raw = UInt32(littleEndian: rawLE)
         if raw >= kSentinelGuard || raw == kSentinelU32 { return .saturated }
-        let lux = Double(raw) / kFixedPointDiv
-        guard lux.isFinite else { return .invalid }
-        return .value(min(lux, kMaxPlausibleLux))
+        let decodedX = Double(raw) / kFixedPointDiv
+        guard decodedX.isFinite else { return .invalid }
+        // Clamp in sensor-space (counts), not physical lux
+        return .value(min(decodedX, kMaxDecodedX))
     }
     return .invalid
 }
@@ -175,11 +177,19 @@ final class ALSManager {
     private var rollingMaxDx: Double = 0
     private var lastDxDecay = Date()
     private var hasSunAnchor: Bool = false
-    private let sunDxTrigger: Double = 1200.0    // counts level that suggests bright outdoor conditions
+    // Tuning knobs via UserDefaults
+    private var sunDxTrigger: Double { // counts level suggesting bright outdoor conditions
+        let v = UserDefaults.standard.object(forKey: "illumination.als.sunDxTrigger") as? Double ?? 1200.0
+        return max(100.0, min(2047.0, v))
+    }
+    private var relBlendMax: Double { // cap for Lrel blend weight
+        let v = UserDefaults.standard.object(forKey: "illumination.als.relativeBlendMax") as? Double ?? 0.25
+        return max(0.0, min(0.5, v))
+    }
     private var warmupUntil: Date = Date().addingTimeInterval(2.0)
 
     // Stall-breaker state for saturation handling
-    private var lastGoodLux: Double = 0
+    private var lastGoodX: Double = 0
     private var lastGoodAt: Date = .distantPast
 
     // Saturation handling knobs
@@ -200,6 +210,14 @@ final class ALSManager {
     private var pendingPercent: Double? = nil
     // Remember the user/system brightness percent before we enable EDR
     private var preEDRUserPercent: Double? = nil
+    
+    // Debug snapshot (exposed for Debug menu)
+    private(set) var debugDecodedX: Double? = nil
+    private(set) var debugDx: Double? = nil
+    private(set) var debugLfit: Double? = nil
+    private(set) var debugLrel: Double? = nil
+    private(set) var debugBlendW: Double? = nil
+    private(set) var debugRollingMaxDx: Double? = nil
 
     // Thresholds + dwell from profile (brightness/enable policy; keep your semantics)
     private var onLux: Double {
@@ -290,21 +308,21 @@ final class ALSManager {
         let now = Date()
 
         switch reader.readSample() {
-        case .value(let rawLux):
+        case .value(let decodedX):
             invalidStreak = 0; saturatedStreak = 0
 
             // Remember last good sample for stall-breaking
-            lastGoodLux = rawLux
+            lastGoodX = decodedX
             lastGoodAt = now
 
             // Compute Δx (decoded counts above dark baseline) and update day-max in sensor-space
-            let dx = max(0.0, rawLux - calibrator.xDark)
+            let dx = max(0.0, decodedX - calibrator.xDark)
             updateRollingMaxDx(dx)
 
             // Smooth the decoded counts (sensor-space)
             let tau = tauBase
             let mult = multBase
-            let xSmoothed = ema(rawLux, state: &lpState, dt: dt, tau: tau, mult: mult)
+            let xSmoothed = ema(decodedX, state: &lpState, dt: dt, tau: tau, mult: mult)
 
             // Estimate physical lux from counts via calibrator
             let Lfit = calibrator.estimateLux(decodedX: xSmoothed)
@@ -319,7 +337,7 @@ final class ALSManager {
                 if hasSunAnchor || rollingMaxDx >= sunDxTrigger {
                     let xSun = 2047.0
                     let conf = min(1.0, max(0.0, (rollingMaxDx - sunDxTrigger) / max(1.0, (xSun - sunDxTrigger))))
-                    w = 0.25 * conf // ramp relative blend up as we gain confidence
+                    w = relBlendMax * conf // ramp relative blend up as we gain confidence
                 }
             }
 
@@ -332,6 +350,13 @@ final class ALSManager {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.currentLux = L
+                // Debug snapshot
+                self.debugDecodedX = xSmoothed
+                self.debugDx = dx
+                self.debugLfit = Lfit
+                self.debugLrel = Lrel
+                self.debugBlendW = w
+                self.debugRollingMaxDx = self.rollingMaxDx
                 self.evaluateAuto(lux: L)
             }
 
@@ -341,7 +366,7 @@ final class ALSManager {
             if now.timeIntervalSince(lastGoodAt) >= saturationApplyAfter {
                 // We are saturated: mark sun-anchor and synthesize a sensor-space surrogate X (decoded counts)
                 hasSunAnchor = true
-                var surrogateX = max(lastGoodLux * saturationBoost,
+                var surrogateX = max(lastGoodX * saturationBoost,
                                       calibrator.xDark + max(rollingMaxDx * 1.05, saturationFloorDx))
                 surrogateX = min(surrogateX, kMaxDecodedX)
 
@@ -353,6 +378,8 @@ final class ALSManager {
                 // Calibrated lux estimate + gated relative blend
                 let Lfit = calibrator.estimateLux(decodedX: xSmoothed)
                 let dxSm = max(0.0, xSmoothed - calibrator.xDark)
+                // Keep rolling max fresh during sustained saturation
+                updateRollingMaxDx(dxSm)
                 let xhat = min(1.0, dxSm / max(rollingMaxDx, 1e-6))
                 let Lrel = 50.0 + (100_000.0 - 50.0) * pow(xhat, 1.45)
 
@@ -361,7 +388,7 @@ final class ALSManager {
                     if hasSunAnchor || rollingMaxDx >= sunDxTrigger {
                         let xSun = 2047.0
                         let conf = min(1.0, max(0.0, (rollingMaxDx - sunDxTrigger) / max(1.0, (xSun - sunDxTrigger))))
-                        w = 0.25 * conf
+                        w = relBlendMax * conf
                     }
                 }
 
@@ -372,6 +399,13 @@ final class ALSManager {
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     self.currentLux = L
+                    // Debug snapshot
+                    self.debugDecodedX = xSmoothed
+                    self.debugDx = dxSm
+                    self.debugLfit = Lfit
+                    self.debugLrel = Lrel
+                    self.debugBlendW = w
+                    self.debugRollingMaxDx = self.rollingMaxDx
                     self.evaluateAuto(lux: L)
                 }
             }

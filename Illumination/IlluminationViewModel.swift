@@ -109,7 +109,7 @@ final class IlluminationViewModel: ObservableObject {
             if let lux = ALSManager.shared.currentLux { return "ALS: \(Int(round(lux))) lx @ \(String(format: "%.1f", ALSManager.shared.sampleHz)) Hz" }
             return "ALS: — lx"
         }()
-        return [
+        var lines: [String] = [
             "Model: \(model)",
             String(format: "Gamma Cap: %.3f", d.cap),
             String(format: "Raw Cap: %.3f (%@)", d.rawCap, (d.rawCap > d.cap + 0.0005) ? "clamped" : "not clamped"),
@@ -125,6 +125,19 @@ final class IlluminationViewModel: ObservableObject {
             "ALS Auto: \(alsAutoEnabled ? "On" : "Off")",
             "Enabled: \(enabled ? "Yes" : "No")"
         ]
+        // Optional ALS internals (decoded sensor-space + blend)
+        if let x = ALSManager.shared.debugDecodedX,
+           let dx = ALSManager.shared.debugDx,
+           let lfit = ALSManager.shared.debugLfit,
+           let lrel = ALSManager.shared.debugLrel,
+           let w = ALSManager.shared.debugBlendW {
+            lines.append(String(format: "ALS X: %.3f (Δx: %.3f)", x, dx))
+            lines.append(String(format: "ALS Lfit: %.0f lx, Lrel: %.0f lx, w=%.2f", lfit, lrel, w))
+            if let rmax = ALSManager.shared.debugRollingMaxDx {
+                lines.append(String(format: "ALS Rolling Δx max: %.1f", rmax))
+            }
+        }
+        return lines
     }
 
     // MARK: - Advanced Options wrappers
