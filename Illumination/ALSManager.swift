@@ -187,9 +187,6 @@ final class ALSManager {
     private let saturationBoost: Double = 1.15             // push above last good to reflect “very bright”
     private let saturationFloorDx: Double = 1200.0         // sensor-space floor (Δx counts) used when synthesizing in direct sun
 
-    // Rolling max (optional: helps outdoor gating without trusting absolute lux)
-    private var rollingMaxLux: Double = 0
-    private var lastMaxDecay = Date()
 
     // Auto mode
     private let profileKey = "illumination.als.profile"
@@ -199,6 +196,10 @@ final class ALSManager {
     private var graceUntil: Date = .distantPast
     private var aboveCount = 0
     private var belowCount = 0
+    // Staged target percent while EDR is OFF (do not move the slider pre‑EDR)
+    private var pendingPercent: Double? = nil
+    // Remember the user/system brightness percent before we enable EDR
+    private var preEDRUserPercent: Double? = nil
 
     // Thresholds + dwell from profile (brightness/enable policy; keep your semantics)
     private var onLux: Double {
@@ -340,7 +341,6 @@ final class ALSManager {
             if now.timeIntervalSince(lastGoodAt) >= saturationApplyAfter {
                 // We are saturated: mark sun-anchor and synthesize a sensor-space surrogate X (decoded counts)
                 hasSunAnchor = true
-                let dxLast = max(0.0, lastGoodLux - calibrator.xDark)
                 var surrogateX = max(lastGoodLux * saturationBoost,
                                       calibrator.xDark + max(rollingMaxDx * 1.05, saturationFloorDx))
                 surrogateX = min(surrogateX, kMaxDecodedX)
@@ -419,14 +419,6 @@ final class ALSManager {
         saturatedStreak = 0
     }
 
-    // MARK: - Optional outdoor gating helper
-    private func updateRollingMax(_ x: Double) {
-        rollingMaxLux = max(rollingMaxLux, x)
-        if Date().timeIntervalSince(lastMaxDecay) > 30 {
-            rollingMaxLux *= 0.995 // slow decay over time
-            lastMaxDecay = Date()
-        }
-    }
 
     // Track the maximum observed Δx (decoded - xDark)
     private func updateRollingMaxDx(_ dx: Double) {
@@ -444,23 +436,32 @@ final class ALSManager {
         // Percent mapping (unchanged semantics)
         let target = percent(forLux: lux)
         let bc = BrightnessController.shared
+        let isOn = bc.appIsEnabled()
 
         // Respect HDR Apps mode: if user selected Apps and an HDR-app is frontmost, pause ALS ramp
         let hdrMode = bc.hdrRegionSamplerModeValue()
         let inHDRApp = HDRAppList.isFrontmostHDRApp()
         let shouldPauseRamp = (hdrMode == 3) && inHDRApp
-        if !shouldPauseRamp {
-            let current = bc.currentUserPercent()
-            let step = inHDRApp && hdrMode == 3 ? max(0.10, rampStep * 0.6) : rampStep
-            let next = current + (target - current) * step
-            bc.setUserPercent(next)
+
+        if isOn {
+            // Only move the slider while EDR is actually ON
+            if !shouldPauseRamp {
+                let current = bc.currentUserPercent()
+                let step = inHDRApp && hdrMode == 3 ? max(0.10, rampStep * 0.6) : rampStep
+                let next = current + (target - current) * step
+                bc.setUserPercent(next)
+            }
+            // Clear any staged target once we’re actively controlling
+            pendingPercent = nil
+        } else {
+            // Stage the desired percent; apply instantly upon enable
+            pendingPercent = target
         }
 
         // Master gating with hysteresis + grace
         if Date() < graceUntil { return }
         let onCountReq = Int(sampleHz * onSeconds)
         let offCountReq = Int(sampleHz * offSeconds)
-        let isOn = bc.appIsEnabled()
 
         if lux >= onLux {
             aboveCount = min(aboveCount + 1, onCountReq)
@@ -475,15 +476,33 @@ final class ALSManager {
         }
 
         if !isOn && aboveCount >= onCountReq {
+            // Capture current slider percent as the value to restore when we later disable EDR
+            if preEDRUserPercent == nil {
+                preEDRUserPercent = bc.currentUserPercent()
+            }
             bc.setEnabled(true)
+            // Apply the staged target immediately so the user sees the boost as EDR engages
+            if let staged = pendingPercent {
+                bc.setUserPercent(staged)
+                pendingPercent = nil
+            } else {
+                // Fall back to a fresh target from current lux
+                bc.setUserPercent(target)
+            }
             aboveCount = 0; belowCount = 0
         } else if isOn && belowCount >= offCountReq {
+            // Restore the pre-EDR SDR brightness percent when turning EDR OFF
+            if let prev = preEDRUserPercent {
+                bc.setUserPercent(prev)
+                preEDRUserPercent = nil
+            }
             bc.setEnabled(false)
+            // Do not move the slider further in SDR; keep last percent staged for the next ON
             aboveCount = 0; belowCount = 0
         }
     }
 
-    /// Note: brightness anchors target indoor range and saturate at 4000 lux; EDR handles readability beyond.
+    /// Note: brightness anchors target indoor SDR range and saturate at 4000 lux; we only drive this curve while EDR is ON. Beyond ~4k lux, readability is handled by EDR headroom.
     // Piecewise linear mapping for lux → percent (your anchors retained)
     private func percent(forLux lux: Double) -> Double {
         let anchors: [(Double, Double)] = [
