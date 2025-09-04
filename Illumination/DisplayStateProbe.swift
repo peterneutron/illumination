@@ -25,19 +25,29 @@ final class DisplayStateProbe {
 
     private(set) var lastResults: [DisplayInfo] = []
 
+    // DRY: shared enumerator over IOMobileFramebufferShim entries
+    private func collectShimEntries() -> [(io_registry_entry_t, [String: Any])] {
+        var out: [(io_registry_entry_t, [String: Any])] = []
+        guard let match = IOServiceMatching("IOMobileFramebufferShim") else { return out }
+        var it: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) == KERN_SUCCESS else { return out }
+        defer { IOObjectRelease(it) }
+        var e: io_registry_entry_t = IOIteratorNext(it)
+        while e != 0 {
+            var cfDict: Unmanaged<CFMutableDictionary>? = nil
+            _ = IORegistryEntryCreateCFProperties(e, &cfDict, kCFAllocatorDefault, 0)
+            let dict = (cfDict?.takeRetainedValue() as? [String: Any]) ?? [:]
+            out.append((e, dict))
+            e = IOIteratorNext(it)
+        }
+        return out
+    }
+
     // Probe all IOMobileFramebufferShim instances and extract display info
     func probe() -> [DisplayInfo] {
         var results: [DisplayInfo] = []
-        guard let match = IOServiceMatching("IOMobileFramebufferShim") else {
-            lastResults = []
-            return []
-        }
-        var it: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) == KERN_SUCCESS else {
-            lastResults = []
-            return []
-        }
-        defer { IOObjectRelease(it) }
+        let collected = collectShimEntries()
+        if collected.isEmpty { lastResults = []; return [] }
 
         // AppKit hints for built-in display
         let builtInScreen: NSScreen? = {
@@ -53,15 +63,7 @@ final class DisplayStateProbe {
         let appKitCurrent: Double? = builtInScreen.map { Double($0.maximumExtendedDynamicRangeColorComponentValue) }
         let runtimeSawEDR: Bool = BrightnessController.shared.currentGammaCapDetails().sawEDR
 
-        var e: io_registry_entry_t = IOIteratorNext(it)
-        while e != 0 {
-            // Collect properties for this entry
-            var cfDict: Unmanaged<CFMutableDictionary>? = nil
-            let kr = IORegistryEntryCreateCFProperties(e, &cfDict, kCFAllocatorDefault, 0)
-            var dict: [String: Any] = [:]
-            if kr == KERN_SUCCESS, let d = cfDict?.takeRetainedValue() as? [String: Any] {
-                dict = d
-            }
+        for (e, dict) in collected {
 
             // identifier
             let identifier: String = (dict["IONameMatched"] as? String)
@@ -167,7 +169,6 @@ final class DisplayStateProbe {
             ))
 
             IOObjectRelease(e)
-            e = IOIteratorNext(it)
         }
 
         lastResults = results
@@ -176,24 +177,13 @@ final class DisplayStateProbe {
 
     // Create an AmbientLightReader bound to the best candidate entry; retain handled by reader.
     func makeALSReader() -> AmbientLightReader? {
-        // First pass: gather entries and pick primary
-        guard let match = IOServiceMatching("IOMobileFramebufferShim") else { return nil }
-        var it: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) == KERN_SUCCESS else { return nil }
-        defer { IOObjectRelease(it) }
-
         // Collect entries and info
+        let collected = collectShimEntries()
+        if collected.isEmpty { return nil }
         var entries: [io_registry_entry_t] = []
         var infos: [DisplayInfo] = []
-
-        var e: io_registry_entry_t = IOIteratorNext(it)
-        while e != 0 {
-            // Retain e into our array; we'll release later
+        for (e, dict) in collected {
             entries.append(e)
-
-            var cfDict: Unmanaged<CFMutableDictionary>? = nil
-            _ = IORegistryEntryCreateCFProperties(e, &cfDict, kCFAllocatorDefault, 0)
-            let dict = (cfDict?.takeRetainedValue() as? [String: Any]) ?? [:]
             let identifier: String = (dict["IONameMatched"] as? String) ?? (dict["IOName"] as? String) ?? "unknown"
             let externalVal = dict["external"]
             let isExternal: Bool = {
@@ -238,8 +228,6 @@ final class DisplayStateProbe {
                 appKitCurrentRatio: nil
             )
             infos.append(info)
-
-            e = IOIteratorNext(it)
         }
 
         // Do not overwrite lastResults with minimal info here; keep full probe results stable

@@ -98,46 +98,8 @@ final class AmbientLightReader {
 
     private var entry: io_registry_entry_t = 0
 
-    init?() {
-        // 1) Try class match + path suffix (your original approach)
-        guard let match = IOServiceMatching("IOMobileFramebufferShim") else { return nil }
-        var it: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) == KERN_SUCCESS else { return nil }
-        defer { IOObjectRelease(it) }
-
-        var candidate: io_registry_entry_t = IOIteratorNext(it)
-        while candidate != 0 {
-            var buf = [CChar](repeating: 0, count: 512)
-            IORegistryEntryGetPath(candidate, kIOServicePlane, &buf)
-            let path = String(cString: buf)
-            if path.contains(Self.requiredPathSuffix) {
-                if IORegistryEntryCreateCFProperty(candidate, Self.keyName as CFString, kCFAllocatorDefault, 0) != nil {
-                    entry = candidate // keep retained; released in deinit
-                    return
-                }
-            }
-            IOObjectRelease(candidate)
-            candidate = IOIteratorNext(it)
-        }
-
-        // 2) Fallback: recursive scan by property presence (model/OS resilient)
-        var it2: io_iterator_t = 0
-        guard IORegistryCreateIterator(kIOMainPortDefault, kIOServicePlane,
-                                       IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents),
-                                       &it2) == KERN_SUCCESS else { return nil }
-        defer { IOObjectRelease(it2) }
-
-        var e: io_registry_entry_t = IOIteratorNext(it2)
-        while e != 0 {
-            if IORegistryEntryCreateCFProperty(e, Self.keyName as CFString, kCFAllocatorDefault, 0) != nil {
-                entry = e // keep; do NOT release here
-                return
-            }
-            IOObjectRelease(e)
-            e = IOIteratorNext(it2)
-        }
-        return nil
-    }
+    // Deprecated legacy scan initializer removed; construct via DisplayStateProbe.makeALSReader()
+    private init?() { return nil }
 
     deinit { if entry != 0 { IOObjectRelease(entry) } }
 
@@ -170,9 +132,7 @@ final class ALSManager {
     private(set) var available: Bool = false
     private(set) var sampleHz: Double = 2.0 { didSet { sampleHz = max(0.5, min(60.0, sampleHz)) } }
 
-    // Conversion knobs (tweakable via defaults)
-    private var calibration: Double { UserDefaults.standard.object(forKey: "illumination.als.calibration") as? Double ?? 1.0 }
-    private var gamma: Double { UserDefaults.standard.object(forKey: "illumination.als.gamma") as? Double ?? 1.0 }
+    // Removed legacy calibration/gamma scalars
 
     // Smoothing state
     private var lpState: Double? = nil
@@ -192,15 +152,9 @@ final class ALSManager {
     private var rollingMaxDx: Double = 0
     private var lastDxDecay = Date()
     private var hasSunAnchor: Bool = false
-    // Tuning knobs via UserDefaults
-    private var sunDxTrigger: Double { // counts level suggesting bright outdoor conditions
-        let v = UserDefaults.standard.object(forKey: "illumination.als.sunDxTrigger") as? Double ?? 1200.0
-        return max(100.0, min(2047.0, v))
-    }
-    private var relBlendMax: Double { // cap for Lrel blend weight
-        let v = UserDefaults.standard.object(forKey: "illumination.als.relativeBlendMax") as? Double ?? 0.25
-        return max(0.0, min(0.5, v))
-    }
+    // Tuning knobs via Settings
+    private var sunDxTrigger: Double { Settings.sunDxTrigger }
+    private var relBlendMax: Double { Settings.relativeBlendMax }
     private var warmupUntil: Date = Date().addingTimeInterval(2.0)
 
     // Stall-breaker state for saturation handling
@@ -223,32 +177,16 @@ final class ALSManager {
     private var belowCount = 0
     // Staged target percent while EDR is OFF (do not move the slider pre‑EDR)
     private var pendingPercent: Double? = nil
-    // Remember the user/system brightness percent before we enable EDR
-    private var preEDRUserPercent: Double? = nil
+    // pre-EDR user percent tracking removed
 
     // EDR entry behavior
     private var edrEnabledAt: Date? = nil
     private var edrDisabledAt: Date? = nil
-    private var entryMinPercent: Double { // minimum percent at entry (1%)
-        let v = UserDefaults.standard.object(forKey: "illumination.als.entry.minPercent") as? Double ?? 1.0
-        return max(0.0, min(10.0, v))
-    }
-    private var entryEnvelopeSeconds: Double { // seconds to fully lift entry cap
-        let v = UserDefaults.standard.object(forKey: "illumination.als.entry.envelopeSeconds") as? Double ?? 1.5
-        return max(0.1, min(5.0, v))
-    }
-    private var maxPercentPerSecond: Double { // slope limiter for %/s
-        let v = UserDefaults.standard.object(forKey: "illumination.als.maxPercentPerSecond") as? Double ?? 50.0
-        return max(5.0, min(200.0, v))
-    }
-    private var minOnSecondsGuard: Double { // minimum time to stay ON once enabled
-        let v = UserDefaults.standard.object(forKey: "illumination.als.minOnSeconds") as? Double ?? 1.5
-        return max(0.0, min(10.0, v))
-    }
-    private var minOffSecondsGuard: Double { // minimum time to stay OFF once disabled
-        let v = UserDefaults.standard.object(forKey: "illumination.als.minOffSeconds") as? Double ?? 1.5
-        return max(0.0, min(10.0, v))
-    }
+    private var entryMinPercent: Double { Settings.entryMinPercent }
+    private var entryEnvelopeSeconds: Double { Settings.entryEnvelopeSeconds }
+    private var maxPercentPerSecond: Double { Settings.maxPercentPerSecond }
+    private var minOnSecondsGuard: Double { Settings.minOnSeconds }
+    private var minOffSecondsGuard: Double { Settings.minOffSeconds }
     
     // Debug snapshot (exposed for Debug menu)
     private(set) var debugDecodedX: Double? = nil
@@ -318,8 +256,8 @@ final class ALSManager {
             reader = r
             available = true
         } else {
-            reader = AmbientLightReader()
-            available = (reader != nil)
+            reader = nil
+            available = false
         }
         // Restore profile + Auto mode
         if let s = UserDefaults.standard.string(forKey: profileKey), let p = ALSProfile(rawValue: s) {
@@ -405,9 +343,6 @@ final class ALSManager {
             var L = (1.0 - w) * Lfit + w * Lrel
             L = min(L, kMaxPlausibleLux)
 
-            // Optional user knobs
-            L = pow(L * calibration, gamma)
-
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.currentLux = L
@@ -455,7 +390,6 @@ final class ALSManager {
 
                 var L = (1.0 - w) * Lfit + w * Lrel
                 L = min(L, kMaxPlausibleLux)
-                L = pow(L * calibration, gamma)
 
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
@@ -507,9 +441,6 @@ final class ALSManager {
         // Re-scan IORegistry if we appear stuck
         if let nr = DisplayStateProbe.shared.makeALSReader() {
             reader = nr
-            available = true
-        } else if let legacy = AmbientLightReader() {
-            reader = legacy
             available = true
         } else {
             available = false
@@ -644,11 +575,11 @@ final class ALSManager {
     }
 
     // MARK: - Debug tuners API
-    func setEntryMinPercent(_ p: Double) { UserDefaults.standard.set(max(0.0, min(10.0, p)), forKey: "illumination.als.entry.minPercent") }
-    func setEntryEnvelopeSeconds(_ s: Double) { UserDefaults.standard.set(max(0.1, min(5.0, s)), forKey: "illumination.als.entry.envelopeSeconds") }
-    func setMaxPercentPerSecond(_ v: Double) { UserDefaults.standard.set(max(5.0, min(200.0, v)), forKey: "illumination.als.maxPercentPerSecond") }
-    func setMinOnSeconds(_ v: Double) { UserDefaults.standard.set(max(0.0, min(10.0, v)), forKey: "illumination.als.minOnSeconds") }
-    func setMinOffSeconds(_ v: Double) { UserDefaults.standard.set(max(0.0, min(10.0, v)), forKey: "illumination.als.minOffSeconds") }
+    func setEntryMinPercent(_ p: Double) { Settings.entryMinPercent = p }
+    func setEntryEnvelopeSeconds(_ s: Double) { Settings.entryEnvelopeSeconds = s }
+    func setMaxPercentPerSecond(_ v: Double) { Settings.maxPercentPerSecond = v }
+    func setMinOnSeconds(_ v: Double) { Settings.minOnSeconds = v }
+    func setMinOffSeconds(_ v: Double) { Settings.minOffSeconds = v }
 
     func entryMinPercentValue() -> Double { entryMinPercent }
     func entryEnvelopeSecondsValue() -> Double { entryEnvelopeSeconds }
@@ -656,15 +587,9 @@ final class ALSManager {
     func minOnSecondsValue() -> Double { minOnSecondsGuard }
     func minOffSecondsValue() -> Double { minOffSecondsGuard }
     func sunDxTriggerValue() -> Double { sunDxTrigger }
-    func setSunDxTrigger(_ v: Double) {
-        let clamped = max(100.0, min(2047.0, v))
-        UserDefaults.standard.set(clamped, forKey: "illumination.als.sunDxTrigger")
-    }
+    func setSunDxTrigger(_ v: Double) { Settings.sunDxTrigger = v }
     func relativeBlendMaxValue() -> Double { relBlendMax }
-    func setRelativeBlendMax(_ v: Double) {
-        let clamped = max(0.0, min(0.5, v))
-        UserDefaults.standard.set(clamped, forKey: "illumination.als.relativeBlendMax")
-    }
+    func setRelativeBlendMax(_ v: Double) { Settings.relativeBlendMax = v }
 
     // MARK: - Calibration helper
     struct CalibAnchor: Codable { let dx: Double; let lux: Double }
