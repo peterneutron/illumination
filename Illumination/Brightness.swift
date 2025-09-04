@@ -324,6 +324,8 @@ final class BrightnessController {
             factor = Swift.min(target, cap)
             technique.adjust(factor: Float(factor))
         }
+        // Refresh display capability/probe info on topology changes
+        _ = DisplayStateProbe.shared.probe()
     }
 
     @objc private func screensDidWake(_ note: Notification) {
@@ -333,6 +335,8 @@ final class BrightnessController {
             factor = Swift.min(target, cap)
             technique.adjust(factor: Float(factor))
         }
+        // Refresh display capability after wake
+        _ = DisplayStateProbe.shared.probe()
     }
 
     // MARK: - Cap computation
