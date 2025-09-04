@@ -107,180 +107,120 @@ struct IlluminationMenuView: View {
             // Footer with Advanced Options dropdown and Quit on the right
             HStack {
                 Menu("Advanced Options") {
-                    // Guard
+                    // Brightness & Safety
                     Group {
-                        Text("Guard").font(.caption).foregroundStyle(.secondary)
+                        Text("Brightness & Safety").font(.caption).foregroundStyle(.secondary)
                         Toggle("Guard Mode", isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
-                        Menu("Guard Factor") {
+                        Menu("Guard Factor: \(Int(round(vm.guardFactor * 100)))%") {
                             ForEach([0.75, 0.85, 0.90, 0.95], id: \.self) { f in
-                                Button(String(format: "%.0f%%", f * 100.0)) { vm.setGuardFactor(f) }
-                            }
-                        }
-                    }
-                    .disabled(!vm.enabled)
-
-                    Divider()
-
-                    // Overlay
-                    Group {
-                        Text("Overlay").font(.caption).foregroundStyle(.secondary)
-                        Toggle("Fullsize", isOn: Binding(get: { vm.overlayFullsize }, set: { vm.setOverlayFullsize($0) }))
-                        Menu("FPS: \(vm.overlayFPS)") {
-                            ForEach([5, 15, 30, 60], id: \.self) { fps in
-                                Button("\(fps) fps") { vm.setOverlayFPS(fps) }
+                                Button(action: { vm.setGuardFactor(f) }) {
+                                    HStack {
+                                        Text(String(format: "%.0f%%", f * 100.0))
+                                        if abs(vm.guardFactor - f) < 0.0001 { Image(systemName: "checkmark") }
+                                    }
+                                }
                             }
                         }
                         Button("EDR Nudge") { vm.edrNudge() }
                     }
-                    .disabled(!vm.enabled)
+                    .disabled(!(vm.enabled || vm.alsAutoEnabled))
 
                     Divider()
 
-                    // ALS Auto (enabled when ALS available, regardless of MS)
+                    // ALS Automatic
                     Group {
-                        Text("ALS Auto").font(.caption).foregroundStyle(.secondary)
+                        Text("ALS Automatic").font(.caption).foregroundStyle(.secondary)
                         Menu("Sensitivity: \(vm.alsProfileName)") {
-                            Button("Earliest") { vm.setALSProfileEarliest() }
-                            Button("Earlier") { vm.setALSProfileEarlier() }
-                            Button("Aggressive") { vm.setALSProfileAggressive() }
-                            Button("Normal") { vm.setALSProfileNormal() }
-                            Button("Conservative") { vm.setALSProfileConservative() }
+                            Button(action: { vm.setALSProfileEarliest() }) { HStack { Text("Earliest"); if ALSManager.shared.getProfile() == .earliest { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setALSProfileEarlier() }) { HStack { Text("Earlier"); if ALSManager.shared.getProfile() == .earlier { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setALSProfileAggressive() }) { HStack { Text("Aggressive"); if ALSManager.shared.getProfile() == .aggressive { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setALSProfileNormal() }) { HStack { Text("Normal"); if ALSManager.shared.getProfile() == .normal { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setALSProfileConservative() }) { HStack { Text("Conservative"); if ALSManager.shared.getProfile() == .conservative { Image(systemName: "checkmark") } } }
                         }
                     }
                     .disabled(!vm.alsAvailable)
 
                     Divider()
 
-                    // HDR (show only Off, Apps; move Auto to Debug)
-                    Group {
-                        Text("HDR").font(.caption).foregroundStyle(.secondary)
-                        Menu("Detection: \(modeName(vm.hdrMode))") {
-                            ForEach([(0,"Off"),(3,"Apps")], id: \.0) { m in
-                                Button(m.1) { vm.setHDRMode(m.0) }
-                            }
-                        }
-                        Menu("Duck Target: \(vm.hdrDuckPercent)%") {
-                            ForEach([30, 40, 50], id: \.self) { p in
-                                Button("\(p)%") { vm.setHDRDuckPercent(p) }
-                            }
-                        }
-                        Menu(String(format: "Threshold: %.2f", vm.hdrThreshold)) {
-                            ForEach([1.4, 1.5, 1.8, 2.0], id: \.self) { t in
-                                Button(String(format: "%.2f", t)) { vm.setHDRThreshold(t) }
-                            }
-                        }
-                        Menu("Fade: \(vm.hdrFadeMs) ms") {
-                            ForEach([200, 300, 500], id: \.self) { ms in
-                                Button("\(ms) ms") { vm.setHDRFadeMs(ms) }
-                            }
-                        }
-                    }
-                    .disabled(!vm.enabled)
-
-                    Divider()
-
-                    // HDR Tile
-                    Group {
-                        Text("HDR Tile").font(.caption).foregroundStyle(.secondary)
-                        Toggle("Enable", isOn: Binding(get: { vm.tileEnabled }, set: { vm.setTileEnabled($0) }))
-                            .disabled(!vm.tileAvailable)
-                        if !vm.tileAvailable { Text("Asset not found").font(.caption).foregroundStyle(.secondary) }
-                        Menu("Size: \(vm.tileSize) px") {
-                            ForEach([64, 32, 16, 8, 4, 1], id: \.self) { s in
-                                Button("\(s) px") { vm.setTileSize(s) }
-                            }
-                        }
-                        Toggle("Full Opacity", isOn: Binding(get: { vm.tileFullOpacity }, set: { vm.setTileFullOpacity($0) }))
-                    }
-                    .disabled(!vm.enabled)
-
-                    Divider()
-
                     // Debug (hidden unlock via title 'o')
                     if vm.debugUnlocked {
                         Menu("Debug") {
-                            ForEach(vm.debugDetails, id: \.self) { line in
-                                Text(line)
-                            }
+                            Menu("Live Diagnostics") { ForEach(vm.debugDetails, id: \.self) { line in Text(line) }; Divider(); Button("Copy Diagnostics") { vm.copyDiagnosticsToPasteboard() } }
                             Divider()
-                            Button("Re-probe Displays") { vm.reprobeDisplays() }
+                        Menu("Display Probe") { ForEach(DisplayStateProbe.shared.debugLines(), id: \.self) { line in Text(line) }; Divider(); Button("Re-probe Displays") { vm.reprobeDisplays() } }
+                        Divider()
+                        // Overlay settings (moved from Advanced)
+                        Menu("Overlay") {
+                            Menu("FPS: \(vm.overlayFPS)") {
+                                ForEach([5, 10, 15, 30, 60, 120], id: \.self) { f in
+                                    Button(action: { vm.setOverlayFPS(f) }) { HStack { Text("\(f)"); if vm.overlayFPS == f { Image(systemName: "checkmark") } } }
+                                }
+                            }
+                            Button("EDR Nudge") { vm.edrNudge() }
+                        }
+                        Divider()
+                        // HDR settings (moved from Advanced)
+                        Menu("HDR Settings") {
+                            Menu("Detection: \(modeName(vm.hdrMode))") {
+                                ForEach([(0,"Off"),(3,"Apps")], id: \.0) { m in
+                                    Button(action: { vm.setHDRMode(m.0) }) { HStack { Text(m.1); if vm.hdrMode == m.0 { Image(systemName: "checkmark") } } }
+                                }
+                            }
+                            Menu("Duck Target: \(vm.hdrDuckPercent)%") {
+                                ForEach([30, 40, 50], id: \.self) { p in
+                                    Button(action: { vm.setHDRDuckPercent(p) }) { HStack { Text("\(p)%"); if vm.hdrDuckPercent == p { Image(systemName: "checkmark") } } }
+                                }
+                            }
+                            Menu(String(format: "Threshold: %.2f", vm.hdrThreshold)) {
+                                ForEach([1.4, 1.5, 1.8, 2.0], id: \.self) { t in
+                                    Button(action: { vm.setHDRThreshold(t) }) { HStack { Text(String(format: "%.2f", t)); if abs(vm.hdrThreshold - t) < 0.0001 { Image(systemName: "checkmark") } } }
+                                }
+                            }
+                            Menu("Fade: \(vm.hdrFadeMs) ms") {
+                                ForEach([200, 300, 500], id: \.self) { ms in
+                                    Button(action: { vm.setHDRFadeMs(ms) }) { HStack { Text("\(ms) ms"); if vm.hdrFadeMs == ms { Image(systemName: "checkmark") } } }
+                                }
+                            }
+                        }
+                        Divider()
+                        // HDR Tile (moved from Advanced)
+                        Menu("HDR Tile") {
+                            Toggle("Enable", isOn: Binding(get: { vm.tileEnabled }, set: { vm.setTileEnabled($0) }))
+                                .disabled(!vm.tileAvailable)
+                            if !vm.tileAvailable { Text("Asset not found").font(.caption).foregroundStyle(.secondary) }
+                            Menu("Size: \(vm.tileSize) px") {
+                                ForEach([64, 32, 16, 8, 4, 1], id: \.self) { s in
+                                    Button(action: { vm.setTileSize(s) }) { HStack { Text("\(s) px"); if vm.tileSize == s { Image(systemName: "checkmark") } } }
+                                }
+                            }
+                            Menu("Opacity: \(vm.tileFullOpacity ? "Full" : "Low")") {
+                                Button(action: { vm.setTileFullOpacity(false) }) { HStack { Text("Low"); if !vm.tileFullOpacity { Image(systemName: "checkmark") } } }
+                                Button(action: { vm.setTileFullOpacity(true) }) { HStack { Text("Full"); if vm.tileFullOpacity { Image(systemName: "checkmark") } } }
+                            }
+                        }
                             Divider()
                             Menu("ALS Tuning") {
-                                // Entry Min Percent
-                                Menu("Entry Min: \(vm.entryMinPercent)%") {
-                                    ForEach([1,2,5,10], id: \.self) { p in
-                                        Button("\(p)%") { vm.setEntryMinPercent(p) }
-                                    }
-                                }
-                                // Entry Envelope Seconds
-                                Menu(String(format: "Entry Envelope: %.1fs", vm.entryEnvelopeSeconds)) {
-                                    ForEach([0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
-                                        Button(String(format: "%.1fs", s)) { vm.setEntryEnvelopeSeconds(s) }
-                                    }
-                                }
-                                // Slope Limit
-                                Menu("Max Slope: \(vm.maxPercentPerSecond)%/s") {
-                                    ForEach([20, 40, 50, 80, 100], id: \.self) { v in
-                                        Button("\(v)%/s") { vm.setMaxPercentPerSecond(v) }
-                                    }
-                                }
-                                // Min On/Off Guards
-                                Menu(String(format: "Min On: %.1fs", vm.minOnSeconds)) {
-                                    ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
-                                        Button(String(format: "%.1fs", s)) { vm.setMinOnSeconds(s) }
-                                    }
-                                }
-                                Menu(String(format: "Min Off: %.1fs", vm.minOffSeconds)) {
-                                    ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
-                                        Button(String(format: "%.1fs", s)) { vm.setMinOffSeconds(s) }
-                                    }
-                                }
-                                // Modeling knobs
-                                Menu(String(format: "Sun Trigger: %.0f", vm.sunDxTrigger)) {
-                                    ForEach([800.0, 1000.0, 1200.0, 1500.0, 1800.0], id: \.self) { v in
-                                        Button(String(format: "%.0f", v)) { vm.setSunDxTrigger(v) }
-                                    }
-                                }
-                                Menu(String(format: "Rel Blend Max: %.2f", vm.relativeBlendMax)) {
-                                    ForEach([0.00, 0.10, 0.20, 0.25, 0.30, 0.40, 0.50], id: \.self) { v in
-                                        Button(String(format: "%.2f", v)) { vm.setRelativeBlendMax(v) }
-                                    }
-                                }
+                                Menu("Entry Min: \(vm.entryMinPercent)%") { ForEach([1,2,5,10], id: \.self) { p in Button("\(p)%") { vm.setEntryMinPercent(p) } } }
+                                Menu(String(format: "Entry Envelope: %.1fs", vm.entryEnvelopeSeconds)) { ForEach([0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in Button(String(format: "%.1fs", s)) { vm.setEntryEnvelopeSeconds(s) } } }
+                                Menu("Max Slope: \(vm.maxPercentPerSecond)%/s") { ForEach([20, 40, 50, 80, 100], id: \.self) { v in Button("\(v)%/s") { vm.setMaxPercentPerSecond(v) } } }
+                                Menu(String(format: "Min On: %.1fs", vm.minOnSeconds)) { ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in Button(String(format: "%.1fs", s)) { vm.setMinOnSeconds(s) } } }
+                                Menu(String(format: "Min Off: %.1fs", vm.minOffSeconds)) { ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in Button(String(format: "%.1fs", s)) { vm.setMinOffSeconds(s) } } }
+                                Menu(String(format: "Sun Trigger: %.0f", vm.sunDxTrigger)) { ForEach([800.0, 1000.0, 1200.0, 1500.0, 1800.0], id: \.self) { v in Button(String(format: "%.0f", v)) { vm.setSunDxTrigger(v) } } }
+                                Menu(String(format: "Rel Blend Max: %.2f", vm.relativeBlendMax)) { ForEach([0.00, 0.10, 0.20, 0.25, 0.30, 0.40, 0.50], id: \.self) { v in Button(String(format: "%.2f", v)) { vm.setRelativeBlendMax(v) } } }
                             }
                             Divider()
                             Menu("Calibration") {
-                                Group {
-                                    Text("Quick Fit").font(.caption).foregroundStyle(.secondary)
-                                    Button("Set xDark from Current") { vm.calibSetDarkFromCurrent() }
-                                }
+                                Group { Text("Quick Fit").font(.caption).foregroundStyle(.secondary); Button("Set xDark from Current") { vm.calibSetDarkFromCurrent() } }
                                 Divider()
-                                Group {
-                                    Text("Anchor A (indoors)").font(.caption).foregroundStyle(.secondary)
-                                    ForEach([200.0, 500.0, 1000.0], id: \.self) { L in
-                                        Button(String(format: "Set Current → %.0f lx", L)) { vm.calibSetAnchorA(L) }
-                                    }
-                                }
-                                Group {
-                                    Text("Anchor B (bright)").font(.caption).foregroundStyle(.secondary)
-                                    ForEach([5000.0, 20000.0, 50000.0], id: \.self) { L in
-                                        Button(String(format: "Set Current → %.0f lx", L)) { vm.calibSetAnchorB(L) }
-                                    }
-                                }
+                                Group { Text("Anchor A (indoors)").font(.caption).foregroundStyle(.secondary); ForEach([200.0, 500.0, 1000.0], id: \.self) { L in Button(String(format: "Set Current → %.0f lx", L)) { vm.calibSetAnchorA(L) } } }
+                                Group { Text("Anchor B (bright)").font(.caption).foregroundStyle(.secondary); ForEach([5000.0, 20000.0, 50000.0], id: \.self) { L in Button(String(format: "Set Current → %.0f lx", L)) { vm.calibSetAnchorB(L) } } }
                                 Divider()
                                 Button("Fit and Save") { vm.calibFitAndSave() }
                                 Button("Clear Anchors") { vm.calibClearAnchors() }
-                                Button("Reset Defaults") { vm.calibResetDefaults() }
+                                Button("Reset Defaults") { vm.calibResetDefaults() }.foregroundStyle(.red)
                             }
                             Divider()
-                            Menu("Screens") {
-                                ForEach(vm.debugScreenLines, id: \.self) { line in
-                                    Text(line)
-                                }
-                            }
-                            Divider()
-                            Menu("Experimental HDR Detection") {
-                                Button("Auto") { vm.setHDRMode(2) }
-                            }
+                            Menu("Experimental") { Button("HDR Detection: Auto") { vm.setHDRMode(2) } }
                         }
                     }
                 }

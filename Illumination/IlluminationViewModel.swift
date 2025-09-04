@@ -121,7 +121,7 @@ final class IlluminationViewModel: ObservableObject {
             String(format: "Safety Margin: %.2f", d.adaptiveMargin),
             String(format: "Ref Gain: %.3f (alpha: %.2f)", d.refGain, d.refAlpha),
             String(format: "Guard Mode: %@, Factor: %.0f%%", controller.isGuardEnabled() ? "On" : "Off", controller.guardFactorValue() * 100.0),
-            "Overlay Fullsize: \(overlayFull ? "On" : "Off")",
+            "Overlay: \(overlayFull ? "On" : "Off")",
             "Overlay FPS: \(fps)",
             String(format: "Current Factor: %.3f", currentFactor),
             "Target %: \(targetPct)%, Effective %: \(effectivePct)%",
@@ -177,9 +177,18 @@ final class IlluminationViewModel: ObservableObject {
     func calibClearAnchors() { ALSManager.shared.clearAnchors(); objectWillChange.send() }
     func calibResetDefaults() { ALSManager.shared.resetCalibration(); objectWillChange.send() }
 
+    // MARK: - Utilities
+    func copyDiagnosticsToPasteboard() {
+        let s = debugDetails.joined(separator: "\n")
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(s, forType: .string)
+    }
+
     // MARK: - Advanced Options wrappers
     var supportsEDR: Bool { controller.currentGammaCapDetails().sawEDR }
     var guardEnabled: Bool { controller.isGuardEnabled() }
+    var guardFactor: Double { controller.guardFactorValue() }
     func setGuardEnabled(_ on: Bool) { controller.setGuardEnabled(on); objectWillChange.send() }
     func setGuardFactor(_ factor: Double) { controller.setGuardFactor(factor); objectWillChange.send() }
 
