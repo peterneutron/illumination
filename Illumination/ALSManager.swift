@@ -168,10 +168,10 @@ final class ALSManager {
 
 
     // Auto mode
-    private let profileKey = "illumination.als.profile"
+    private let profileKey = "illumination.als.profile" // legacy key kept for migration only
     private var profile: ALSProfile = .normal
     private(set) var autoEnabled: Bool = false
-    private let autoEnabledKey = "illumination.als.autoEnabled"
+    private let autoEnabledKey = "illumination.als.autoEnabled" // legacy key kept for migration only
     private var graceUntil: Date = .distantPast
     private var aboveCount = 0
     private var belowCount = 0
@@ -260,14 +260,13 @@ final class ALSManager {
             available = false
         }
         // Restore profile + Auto mode
-        if let s = UserDefaults.standard.string(forKey: profileKey), let p = ALSProfile(rawValue: s) {
+        if let s = Settings.alsProfileRaw, let p = ALSProfile(rawValue: s) {
             profile = p
         } else {
             profile = .normal
         }
-        let stored = UserDefaults.standard.object(forKey: autoEnabledKey) as? Bool ?? false
         autoEnabled = false
-        setAutoEnabled(stored)
+        setAutoEnabled(Settings.alsAutoEnabled)
         start()
     }
 
@@ -276,7 +275,7 @@ final class ALSManager {
     func setAutoEnabled(_ on: Bool) {
         if on == autoEnabled { return }
         autoEnabled = on
-        UserDefaults.standard.set(on, forKey: autoEnabledKey)
+        Settings.alsAutoEnabled = on
     }
 
     func noteManualOverride() { graceUntil = Date().addingTimeInterval(15.0) }
@@ -568,7 +567,7 @@ final class ALSManager {
     func setProfile(_ newProfile: ALSProfile) {
         guard newProfile != profile else { return }
         profile = newProfile
-        UserDefaults.standard.set(newProfile.rawValue, forKey: profileKey)
+        Settings.alsProfileRaw = newProfile.rawValue
         // Reset smoothing + dwell counters on profile change
         lpState = nil
         aboveCount = 0; belowCount = 0
