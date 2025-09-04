@@ -149,6 +149,14 @@ struct IlluminationMenuView: View {
                             Divider()
                         Menu("Display Probe") { ForEach(DisplayStateProbe.shared.debugLines(), id: \.self) { line in Text(line) }; Divider(); Button("Re-probe Displays") { vm.reprobeDisplays() } }
                         Divider()
+                        // Lux Label Steps
+                        Menu("Lux Steps") {
+                            Button(action: { vm.setLuxStepMode(0) }) { HStack { Text("1 lx"); if vm.luxStepMode == 0 { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setLuxStepMode(1) }) { HStack { Text("0.1 k lx"); if vm.luxStepMode == 1 { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setLuxStepMode(2) }) { HStack { Text("0.5 k lx"); if vm.luxStepMode == 2 { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setLuxStepMode(3) }) { HStack { Text("1 k lx"); if vm.luxStepMode == 3 { Image(systemName: "checkmark") } } }
+                        }
+                        Divider()
                         // Overlay settings (moved from Advanced)
                         Menu("Overlay") {
                             Menu("FPS: \(vm.overlayFPS)") {
@@ -403,12 +411,23 @@ private struct LiveLuxLabel: NSViewRepresentable {
         }
         deinit { timer?.invalidate() }
         static func formatLux(_ value: Double) -> String {
-            if value < 1000 {
+            if value < 1000 { return "\(Int(round(value))) lx" }
+            let mode = Settings.luxStepMode
+            switch mode {
+            case 0: // 1 lx steps above 1000
                 return "\(Int(round(value))) lx"
-            } else {
+            case 1: // 0.1 kLux
                 let k = value / 1000.0
-                let halfStep = (k * 2.0).rounded() / 2.0 // 0.5 kLux steps
-                return String(format: "%.1fk lx", halfStep)
+                let step = (k * 10.0).rounded() / 10.0
+                return String(format: "%.1fk lx", step)
+            case 3: // 1 kLux
+                let k = value / 1000.0
+                let step = k.rounded()
+                return String(format: "%.0fk lx", step)
+            default: // 0.5 kLux
+                let k = value / 1000.0
+                let step = (k * 2.0).rounded() / 2.0
+                return String(format: "%.1fk lx", step)
             }
         }
     }
