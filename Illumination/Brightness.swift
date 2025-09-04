@@ -169,15 +169,7 @@ final class BrightnessController {
     private let guardFactorKey = "illumination.guard.factor"
     private var guardEnabled: Bool = false
     private var guardFactor: Double = 0.90
-    // AB (Auto-Brightness) mode heuristics
-    private let abEnterThreshold: Double = 0.02
-    private let abExitThreshold: Double = 0.05
-    private let abStreakRequired: Int = 2
-    private let abGuardFactor: Double = 0.95
-    private let staticSafetyMargin: Double = 0.98
-    private var abOffStreak: Int = 0
-    private var abOnStreak: Int = 0
-    private var abStaticMode: Bool = false
+    // Removed legacy AB (Auto-Brightness) heuristics
     // HDR-aware auto-duck
     private let hdrAwareEnabledKey = "illumination.hdraware.enabled"
     private let hdrAwareDuckPercentKey = "illumination.hdraware.duck.percent"
@@ -591,9 +583,7 @@ final class BrightnessController {
         switch mode {
         case 0: // Off
             return false
-        case 1: // On (always duck)
-            return true
-        case 2: // Auto (app-gated + sampler evidence)
+        case 2: // Auto (app-gated + sampler evidence) [Debug/Experimental]
             return HDRAppList.isFrontmostHDRApp() && hdrSampler.hdrPresent
         case 3: // Apps (app-gated only)
             return HDRAppList.isFrontmostHDRApp()
