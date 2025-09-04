@@ -185,6 +185,10 @@ final class IlluminationViewModel: ObservableObject {
         pb.setString(s, forType: .string)
     }
 
+    // MARK: - Lux label steps
+    var luxStepMode: Int { Settings.luxStepMode }
+    func setLuxStepMode(_ mode: Int) { Settings.luxStepMode = max(0, min(3, mode)); objectWillChange.send() }
+
     // MARK: - Advanced Options wrappers
     var supportsEDR: Bool { controller.currentGammaCapDetails().sawEDR }
     var guardEnabled: Bool { controller.isGuardEnabled() }

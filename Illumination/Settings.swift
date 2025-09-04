@@ -119,4 +119,11 @@ enum Settings {
         get { UserDefaults.standard.object(forKey: alsAutoEnabledKey) as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: alsAutoEnabledKey) }
     }
+
+    // UI: Lux label steps
+    private static let luxStepModeKey = "illumination.ui.lux.step" // 0=1lx,1=0.1k,2=0.5k,3=1k
+    static var luxStepMode: Int {
+        get { max(0, min(3, UserDefaults.standard.object(forKey: luxStepModeKey) as? Int ?? 2)) }
+        set { UserDefaults.standard.set(max(0, min(3, newValue)), forKey: luxStepModeKey) }
+    }
 }
