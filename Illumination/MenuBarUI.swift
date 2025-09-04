@@ -203,6 +203,8 @@ struct IlluminationMenuView: View {
                                 Text(line)
                             }
                             Divider()
+                            Button("Re-probe Displays") { vm.reprobeDisplays() }
+                            Divider()
                             Menu("ALS Tuning") {
                                 // Entry Min Percent
                                 Menu("Entry Min: \(vm.entryMinPercent)%") {
@@ -231,6 +233,17 @@ struct IlluminationMenuView: View {
                                 Menu(String(format: "Min Off: %.1fs", vm.minOffSeconds)) {
                                     ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
                                         Button(String(format: "%.1fs", s)) { vm.setMinOffSeconds(s) }
+                                    }
+                                }
+                                // Modeling knobs
+                                Menu(String(format: "Sun Trigger: %.0f", vm.sunDxTrigger)) {
+                                    ForEach([800.0, 1000.0, 1200.0, 1500.0, 1800.0], id: \.self) { v in
+                                        Button(String(format: "%.0f", v)) { vm.setSunDxTrigger(v) }
+                                    }
+                                }
+                                Menu(String(format: "Rel Blend Max: %.2f", vm.relativeBlendMax)) {
+                                    ForEach([0.00, 0.10, 0.20, 0.25, 0.30, 0.40, 0.50], id: \.self) { v in
+                                        Button(String(format: "%.2f", v)) { vm.setRelativeBlendMax(v) }
                                     }
                                 }
                             }

@@ -59,6 +59,7 @@ xcuserdata/
 *.trace
 repomix-output.xml
 agents.md
+temporary.md
 
 # Caches
 /.cache/

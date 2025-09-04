@@ -148,6 +148,17 @@ final class AmbientLightReader {
         }
         return decodeAmbientBrightness(prop)
     }
+
+    // Bind to a provided IORegistry entry (retains it); validate key presence
+    init?(entry: io_registry_entry_t) {
+        guard entry != 0 else { return nil }
+        // Validate the key exists
+        if IORegistryEntryCreateCFProperty(entry, Self.keyName as CFString, kCFAllocatorDefault, 0) == nil {
+            return nil
+        }
+        self.entry = entry
+        IOObjectRetain(self.entry)
+    }
 }
 
 // MARK: - ALS Manager + Auto Control
@@ -300,8 +311,16 @@ final class ALSManager {
     }
 
     private init() {
-        reader = AmbientLightReader()
-        available = (reader != nil)
+        // First, run a full probe so Debug has data on startup
+        _ = DisplayStateProbe.shared.probe()
+        // Prefer robust probe; fallback to legacy discovery
+        if let r = DisplayStateProbe.shared.makeALSReader() {
+            reader = r
+            available = true
+        } else {
+            reader = AmbientLightReader()
+            available = (reader != nil)
+        }
         // Restore profile + Auto mode
         if let s = UserDefaults.standard.string(forKey: profileKey), let p = ALSProfile(rawValue: s) {
             profile = p
@@ -486,9 +505,11 @@ final class ALSManager {
     // MARK: - Rebind watchdog
     private func attemptRebind() {
         // Re-scan IORegistry if we appear stuck
-        let newReader = AmbientLightReader()
-        if let nr = newReader {
+        if let nr = DisplayStateProbe.shared.makeALSReader() {
             reader = nr
+            available = true
+        } else if let legacy = AmbientLightReader() {
+            reader = legacy
             available = true
         } else {
             available = false
@@ -634,6 +655,16 @@ final class ALSManager {
     func maxPercentPerSecondValue() -> Double { maxPercentPerSecond }
     func minOnSecondsValue() -> Double { minOnSecondsGuard }
     func minOffSecondsValue() -> Double { minOffSecondsGuard }
+    func sunDxTriggerValue() -> Double { sunDxTrigger }
+    func setSunDxTrigger(_ v: Double) {
+        let clamped = max(100.0, min(2047.0, v))
+        UserDefaults.standard.set(clamped, forKey: "illumination.als.sunDxTrigger")
+    }
+    func relativeBlendMaxValue() -> Double { relBlendMax }
+    func setRelativeBlendMax(_ v: Double) {
+        let clamped = max(0.0, min(0.5, v))
+        UserDefaults.standard.set(clamped, forKey: "illumination.als.relativeBlendMax")
+    }
 
     // MARK: - Calibration helper
     struct CalibAnchor: Codable { let dx: Double; let lux: Double }
