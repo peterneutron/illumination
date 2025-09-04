@@ -141,7 +141,14 @@ final class IlluminationViewModel: ObservableObject {
                 lines.append(String(format: "ALS Rolling Δx max: %.1f", rmax))
             }
         }
+        // Display probe summary
+        lines.append(contentsOf: DisplayStateProbe.shared.debugLines())
         return lines
+    }
+
+    func reprobeDisplays() {
+        _ = DisplayStateProbe.shared.probe()
+        objectWillChange.send()
     }
 
     // MARK: - Debug Tuners (ALS)
@@ -155,6 +162,10 @@ final class IlluminationViewModel: ObservableObject {
     func setMinOnSeconds(_ s: Double) { ALSManager.shared.setMinOnSeconds(s); objectWillChange.send() }
     var minOffSeconds: Double { ALSManager.shared.minOffSecondsValue() }
     func setMinOffSeconds(_ s: Double) { ALSManager.shared.setMinOffSeconds(s); objectWillChange.send() }
+    var sunDxTrigger: Double { ALSManager.shared.sunDxTriggerValue() }
+    func setSunDxTrigger(_ v: Double) { ALSManager.shared.setSunDxTrigger(v); objectWillChange.send() }
+    var relativeBlendMax: Double { ALSManager.shared.relativeBlendMaxValue() }
+    func setRelativeBlendMax(_ v: Double) { ALSManager.shared.setRelativeBlendMax(v); objectWillChange.send() }
 
     // MARK: - Calibration Helper
     var calibA: ALSManager.CalibAnchor? { ALSManager.shared.calibAnchorA() }
