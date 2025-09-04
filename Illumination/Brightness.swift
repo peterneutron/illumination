@@ -182,34 +182,29 @@ final class BrightnessController {
     private var hdrRegionSamplerMode: Int = 0 // 0=Off,1=Auto,2=Always
     private var hdrActiveStreak: Int = 0
     private var hdrInactiveStreak: Int = 0
-    private var hdrDuckLevel: Double = 0.0 // 0..1 ramp
-    private var hdrDuckAnimating: Bool = false
-    private var hdrDuckTimer: Timer?
-    private var hdrDuckAnimStart: Date?
-    private var hdrDuckStartLevel: Double = 0.0
-    private var hdrDuckTargetLevel: Double = 0.0
+    private let hdrDuckEngine = HDRDuckEngine()
     private var hdrDuckFadeDuration: Double = 0.25 // seconds
     private let hdrSampler = HDRRegionSampler()
 
     init() {
         // Restore persisted state
         let defaults = UserDefaults.standard
-        let storedEnabled = defaults.object(forKey: "illumination.enabled") as? Bool ?? false
-        let storedValue = defaults.object(forKey: "illumination.brightness") as? Double
+        let storedEnabled = Settings.masterEnabled
+        let storedValue = Settings.brightnessFactor
         let maxCap = currentGammaCap()
         // Load guard settings
-        self.guardEnabled = defaults.object(forKey: guardEnabledKey) as? Bool ?? false
-        let gf = defaults.object(forKey: guardFactorKey) as? Double ?? 0.90
+        self.guardEnabled = Settings.guardEnabled
+        let gf = Settings.guardFactor
         self.guardFactor = Swift.max(0.70, Swift.min(0.98, gf))
         // Load HDR-aware settings
-        self.hdrAwareEnabled = defaults.object(forKey: hdrAwareEnabledKey) as? Bool ?? false
-        self.hdrAwareDuckPercent = defaults.object(forKey: hdrAwareDuckPercentKey) as? Double ?? 50.0
-        self.hdrAwareThreshold = defaults.object(forKey: hdrAwareThresholdKey) as? Double ?? 1.5
-        var storedMode = defaults.object(forKey: hdrRegionSamplerModeKey) as? Int ?? 0
+        self.hdrAwareEnabled = Settings.hdrAwareEnabled
+        self.hdrAwareDuckPercent = Settings.hdrDuckPercent
+        self.hdrAwareThreshold = Settings.hdrThreshold
+        var storedMode = Settings.hdrRegionSamplerMode
         // Migration: remove "On" (1); map to "Apps" (3). Keep Auto (2) but hidden in UI.
         if storedMode == 1 { storedMode = 3; defaults.set(storedMode, forKey: hdrRegionSamplerModeKey) }
         self.hdrRegionSamplerMode = storedMode
-        self.hdrDuckFadeDuration = defaults.object(forKey: hdrAwareFadeDurationKey) as? Double ?? 0.25
+        self.hdrDuckFadeDuration = Settings.hdrFadeDuration
         // Migrate: if previous value looked like percentage (e.g. > 2.0), map to factor
         if let v = storedValue {
             if v >= 1.0 && v <= 2.0 {
@@ -220,12 +215,12 @@ final class BrightnessController {
                 let p = Swift.max(0.0, Swift.min(100.0, v)) / 100.0
                 userPercent = p * 100.0
                 factor = 1.0 + (maxCap - 1.0) * p
-                defaults.set(factor, forKey: "illumination.brightness")
+                Settings.brightnessFactor = factor
             }
         } else {
             factor = maxCap // default to max capability
             userPercent = 100.0
-            defaults.set(factor, forKey: "illumination.brightness")
+            Settings.brightnessFactor = factor
         }
         enabled = storedEnabled
 
@@ -258,7 +253,7 @@ final class BrightnessController {
         let request = enabled && supportsEDR
         self.enabled = request
         // Persist master state so UI reflects changes from Auto as well
-        UserDefaults.standard.set(request, forKey: "illumination.enabled")
+        Settings.masterEnabled = request
         if request {
             // Resume auxiliary visuals (tile) on main thread to avoid window-thread issues
             DispatchQueue.main.async {
@@ -416,15 +411,15 @@ final class BrightnessController {
                     var desired: Double? = nil
                     if self.hdrActiveStreak >= 2 { desired = 1.0 }
                     else if self.hdrInactiveStreak >= 3 { desired = 0.0 }
-                    if let d = desired, abs(d - self.hdrDuckLevel) > 0.001, !self.hdrDuckAnimating {
+                    if let d = desired, abs(d - self.hdrDuckEngine.duckLevel) > 0.001, !self.hdrDuckEngine.isAnimating {
                         self.startHDRDuckAnimation(to: d)
                     }
-                    if !self.hdrDuckAnimating && self.hdrDuckLevel > 0.0001 {
+                    if !self.hdrDuckEngine.isAnimating && self.hdrDuckEngine.duckLevel > 0.0001 {
                         let duckTarget = 1.0 + (cap - 1.0) * (self.hdrAwareDuckPercent / 100.0)
-                        effective = (1.0 - self.hdrDuckLevel) * effective + self.hdrDuckLevel * duckTarget
+                        effective = (1.0 - self.hdrDuckEngine.duckLevel) * effective + self.hdrDuckEngine.duckLevel * duckTarget
                     }
                 }
-                if !self.hdrDuckAnimating {
+                if !self.hdrDuckEngine.isAnimating {
                     if abs(effective - self.factor) > 0.0001 {
                         self.factor = effective
                         self.technique.adjust(factor: Float(self.factor))
@@ -468,37 +463,21 @@ final class BrightnessController {
     }
 
     private func startHDRDuckAnimation(to target: Double) {
-        hdrDuckTimer?.invalidate(); hdrDuckTimer = nil
-        hdrDuckAnimating = true
-        hdrDuckAnimStart = Date()
-        hdrDuckStartLevel = hdrDuckLevel
-        hdrDuckTargetLevel = target
-        let interval = 1.0 / 30.0 // 30 Hz
-        hdrDuckTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true, block: { [weak self] timer in
-            guard let self = self, let start = self.hdrDuckAnimStart else { timer.invalidate(); return }
-            let elapsed = Date().timeIntervalSince(start)
-            let dur = max(0.05, self.hdrDuckFadeDuration)
-            var t = min(1.0, elapsed / dur)
-            // Smoothstep ease-in-out
-            t = t * t * (3.0 - 2.0 * t)
-            self.hdrDuckLevel = self.hdrDuckStartLevel + (self.hdrDuckTargetLevel - self.hdrDuckStartLevel) * t
+        let fade = hdrDuckFadeDuration
+        hdrDuckEngine.start(to: target, fade: fade, onProgress: { [weak self] (level: Double) in
+            guard let self = self else { return }
             // Recompute effective factor and apply
             let details = self.currentGammaCapDetails()
             let cap = details.cap
             let base = 1.0 + (cap - 1.0) * (self.userPercent / 100.0)
             let duckTarget = 1.0 + (cap - 1.0) * (self.hdrAwareDuckPercent / 100.0)
-            var effective = (1.0 - self.hdrDuckLevel) * base + self.hdrDuckLevel * duckTarget
+            var effective = (1.0 - level) * base + level * duckTarget
             effective = Swift.max(1.0, Swift.min(cap, effective))
             if abs(effective - self.factor) > 0.0001 {
                 self.factor = effective
                 self.technique.adjust(factor: Float(self.factor))
             }
-            if t >= 1.0 {
-                self.hdrDuckAnimating = false
-                timer.invalidate()
-            }
         })
-        RunLoop.main.add(hdrDuckTimer!, forMode: .common)
     }
 
     // MARK: - Guard controls
@@ -515,21 +494,15 @@ final class BrightnessController {
     // MARK: - Overlay controls
     private let overlayFullsizeKey = "illumination.overlay.fullsize"
     private let overlayFPSKey = "illumination.overlay.fps"
-    func overlayFullsizeEnabled() -> Bool {
-        UserDefaults.standard.object(forKey: overlayFullsizeKey) as? Bool ?? true
-    }
+    func overlayFullsizeEnabled() -> Bool { Settings.overlayFullsize }
     func setOverlayFullsize(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: overlayFullsizeKey)
+        Settings.overlayFullsize = enabled
         technique.setOverlayConfig(fullsize: enabled, fps: overlayFPSValue())
     }
-    func overlayFPSValue() -> Int {
-        let v = UserDefaults.standard.object(forKey: overlayFPSKey) as? Int ?? 30
-        return max(5, min(120, v))
-    }
+    func overlayFPSValue() -> Int { Settings.overlayFPS }
     func setOverlayFPS(_ fps: Int) {
-        let clamped = max(5, min(120, fps))
-        UserDefaults.standard.set(clamped, forKey: overlayFPSKey)
-        technique.setOverlayConfig(fullsize: overlayFullsizeEnabled(), fps: clamped)
+        Settings.overlayFPS = fps
+        technique.setOverlayConfig(fullsize: overlayFullsizeEnabled(), fps: Settings.overlayFPS)
     }
     func edrNudge() {
         technique.nudgeEDR()
@@ -538,32 +511,32 @@ final class BrightnessController {
     func hdrAwareIsEnabled() -> Bool { hdrAwareEnabled }
     func setHDRAwareEnabled(_ enabled: Bool) {
         hdrAwareEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: hdrAwareEnabledKey)
-        if !enabled { hdrDuckLevel = 0.0; hdrActiveStreak = 0; hdrInactiveStreak = 0 }
+        Settings.hdrAwareEnabled = enabled
+        if !enabled { hdrDuckEngine.reset(); hdrActiveStreak = 0; hdrInactiveStreak = 0 }
     }
     func hdrAwareDuckPercentValue() -> Double { hdrAwareDuckPercent }
     func setHDRAwareDuckPercent(_ percent: Double) {
         let p = Swift.max(0.0, Swift.min(100.0, percent))
         hdrAwareDuckPercent = p
-        UserDefaults.standard.set(p, forKey: hdrAwareDuckPercentKey)
+        Settings.hdrDuckPercent = p
     }
     func hdrAwareThresholdValue() -> Double { hdrAwareThreshold }
     func setHDRAwareThreshold(_ v: Double) {
         let val = Swift.max(1.1, Swift.min(3.0, v))
         hdrAwareThreshold = val
-        UserDefaults.standard.set(val, forKey: hdrAwareThresholdKey)
+        Settings.hdrThreshold = val
     }
     // 0=Off,1=On(always),2=Auto(app+sampler),3=Apps(app-only)
     func hdrRegionSamplerModeValue() -> Int { max(0, min(3, hdrRegionSamplerMode)) }
     func setHDRRegionSamplerMode(_ mode: Int) {
         hdrRegionSamplerMode = max(0, min(3, mode))
-        UserDefaults.standard.set(hdrRegionSamplerMode, forKey: hdrRegionSamplerModeKey)
+        Settings.hdrRegionSamplerMode = hdrRegionSamplerMode
     }
     func hdrAwareFadeDurationValue() -> Double { hdrDuckFadeDuration }
     func setHDRAwareFadeDuration(_ seconds: Double) {
         let v = Swift.max(0.05, Swift.min(2.0, seconds))
         hdrDuckFadeDuration = v
-        UserDefaults.standard.set(v, forKey: hdrAwareFadeDurationKey)
+        Settings.hdrFadeDuration = v
     }
 
     private func isHDRContentLikely(bestRatioHint: Double) -> Bool {
@@ -605,3 +578,37 @@ final class BrightnessController {
         UserDefaults.standard.set(clamped, forKey: guardFactorKey)
     }
 }
+    // MARK: - HDR ducking engine
+    private final class HDRDuckEngine {
+        private(set) var duckLevel: Double = 0.0 // 0..1
+        private var timer: Timer?
+        private var animStart: Date?
+        private var startLevel: Double = 0.0
+        private var targetLevel: Double = 0.0
+        private var fadeDuration: Double = 0.25
+
+        var isAnimating: Bool { timer != nil }
+
+        func stop() { timer?.invalidate(); timer = nil }
+        func reset() { stop(); duckLevel = 0.0 }
+
+        func start(to target: Double, fade: Double, onProgress: @escaping (Double) -> Void, onEnd: (() -> Void)? = nil) {
+            stop()
+            fadeDuration = max(0.05, fade)
+            animStart = Date()
+            startLevel = duckLevel
+            targetLevel = max(0.0, min(1.0, target))
+            let interval = 1.0 / 30.0
+            timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] t in
+                guard let self = self, let start = self.animStart else { t.invalidate(); return }
+                let elapsed = Date().timeIntervalSince(start)
+                var tnorm = min(1.0, elapsed / self.fadeDuration)
+                // smoothstep
+                tnorm = tnorm * tnorm * (3.0 - 2.0 * tnorm)
+                self.duckLevel = self.startLevel + (self.targetLevel - self.startLevel) * tnorm
+                onProgress(self.duckLevel)
+                if tnorm >= 1.0 { t.invalidate(); onEnd?() }
+            }
+            if let tm = timer { RunLoop.main.add(tm, forMode: .common) }
+        }
+    }
