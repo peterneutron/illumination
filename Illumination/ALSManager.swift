@@ -4,20 +4,33 @@ import AppKit
 
 // MARK: - ALS Auto Profiles
 enum ALSProfile: String, CaseIterable {
-    case earliest
-    case earlier
-    case aggressive
-    case normal
-    case conservative
+    case twilight      // formerly: earliest
+    case daybreak      // formerly: earlier
+    case midday        // formerly: aggressive
+    case sunburst      // formerly: normal
+    case highNoon      // formerly: conservative
 
     var displayName: String {
         switch self {
-        case .earliest: return "Earliest"
-        case .earlier: return "Earlier"
-        case .aggressive: return "Aggressive"
-        case .normal: return "Normal"
-        case .conservative: return "Conservative"
+        case .twilight: return "Twilight"
+        case .daybreak: return "Daybreak"
+        case .midday: return "Midday"
+        case .sunburst: return "Sunburst"
+        case .highNoon: return "High Noon"
         }
+    }
+}
+
+// Legacy raw-value migration helper
+private func migrateALSProfileRaw(_ raw: String) -> ALSProfile? {
+    if let p = ALSProfile(rawValue: raw) { return p }
+    switch raw {
+    case "earliest": return .twilight
+    case "earlier": return .daybreak
+    case "aggressive": return .midday
+    case "normal": return .sunburst
+    case "conservative": return .highNoon
+    default: return nil
     }
 }
 
@@ -169,7 +182,7 @@ final class ALSManager {
 
     // Auto mode
     private let profileKey = "illumination.als.profile" // legacy key kept for migration only
-    private var profile: ALSProfile = .normal
+    private var profile: ALSProfile = .sunburst
     private(set) var autoEnabled: Bool = false
     private let autoEnabledKey = "illumination.als.autoEnabled" // legacy key kept for migration only
     private var graceUntil: Date = .distantPast
@@ -201,50 +214,50 @@ final class ALSManager {
         // Thresholds for enabling Illumination (EDR overlay) per profile
         // Aggressive trips earlier; Conservative requires stronger daylight
         switch profile {
-        case .earliest:     return 8_000.0   // very early
-        case .earlier:      return 12_000.0  // early
-        case .aggressive:   return 15_000.0  // bright window / light shade
-        case .normal:       return 25_000.0  // shade → outdoor
-        case .conservative: return 35_000.0  // strong daylight only
+        case .twilight:     return 8_000.0   // very early
+        case .daybreak:     return 12_000.0  // early
+        case .midday:       return 15_000.0  // bright window / light shade
+        case .sunburst:     return 25_000.0  // shade → outdoor
+        case .highNoon:     return 35_000.0  // strong daylight only
         }
     }
     private var offLux: Double {
         // Hysteresis off thresholds per profile
         switch profile {
-        case .earliest:     return 5_000.0
-        case .earlier:      return 8_000.0
-        case .aggressive:   return 10_000.0
-        case .normal:       return 18_000.0
-        case .conservative: return 25_000.0
+        case .twilight:     return 5_000.0
+        case .daybreak:     return 8_000.0
+        case .midday:       return 10_000.0
+        case .sunburst:     return 18_000.0
+        case .highNoon:     return 25_000.0
         }
     }
     private var onSeconds: Double {
         // Dwell time before turning ON (shorter outside for snappy response)
         switch profile {
-        case .earliest:     return 1.0
-        case .earlier:      return 1.0
-        case .aggressive:   return 1.0
-        case .normal:       return 2.0
-        case .conservative: return 3.0
+        case .twilight:     return 1.0
+        case .daybreak:     return 1.0
+        case .midday:       return 1.0
+        case .sunburst:     return 2.0
+        case .highNoon:     return 3.0
         }
     }
     private var offSeconds: Double {
         // Dwell time before turning OFF (longer to avoid flapping under passing clouds)
         switch profile {
-        case .earliest:     return 2.0
-        case .earlier:      return 3.0
-        case .aggressive:   return 2.0
-        case .normal:       return 4.0
-        case .conservative: return 6.0
+        case .twilight:     return 2.0
+        case .daybreak:     return 3.0
+        case .midday:       return 2.0
+        case .sunburst:     return 4.0
+        case .highNoon:     return 6.0
         }
     }
     private var rampStep: Double { // fraction toward target per sample
         switch profile {
-        case .earliest: return 0.50
-        case .earlier: return 0.45
-        case .aggressive: return 0.40
-        case .normal: return 0.25
-        case .conservative: return 0.15
+        case .twilight: return 0.50
+        case .daybreak: return 0.45
+        case .midday: return 0.40
+        case .sunburst: return 0.25
+        case .highNoon: return 0.15
         }
     }
 
@@ -260,10 +273,12 @@ final class ALSManager {
             available = false
         }
         // Restore profile + Auto mode
-        if let s = Settings.alsProfileRaw, let p = ALSProfile(rawValue: s) {
+        if let s = Settings.alsProfileRaw, let p = migrateALSProfileRaw(s) {
             profile = p
+            // Write back migrated value if legacy key was used
+            if p.rawValue != s { Settings.alsProfileRaw = p.rawValue }
         } else {
-            profile = .normal
+            profile = .sunburst
         }
         autoEnabled = false
         setAutoEnabled(Settings.alsAutoEnabled)
@@ -417,11 +432,11 @@ final class ALSManager {
     @inline(__always)
     private func smoothingParams() -> (tau: Double, mult: Double) {
         switch profile {
-        case .earliest:     return (1.5, 1.6)  // quickest
-        case .earlier:      return (1.6, 1.55)
-        case .aggressive:   return (1.8, 1.5)  // quicker attack
-        case .normal:       return (3.5, 1.0)
-        case .conservative: return (6.0, 0.8)  // extra calm indoors
+        case .twilight:     return (1.5, 1.6)  // quickest
+        case .daybreak:     return (1.6, 1.55)
+        case .midday:       return (1.8, 1.5)  // quicker attack
+        case .sunburst:     return (3.5, 1.0)
+        case .highNoon:     return (6.0, 0.8)  // extra calm indoors
         }
     }
 

@@ -131,11 +131,11 @@ struct IlluminationMenuView: View {
                     Group {
                         Text("ALS Automatic").font(.caption).foregroundStyle(.secondary)
                         Menu("Sensitivity: \(vm.alsProfileName)") {
-                            Button(action: { vm.setALSProfileEarliest() }) { HStack { Text("Earliest"); if ALSManager.shared.getProfile() == .earliest { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setALSProfileEarlier() }) { HStack { Text("Earlier"); if ALSManager.shared.getProfile() == .earlier { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setALSProfileAggressive() }) { HStack { Text("Aggressive"); if ALSManager.shared.getProfile() == .aggressive { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setALSProfileNormal() }) { HStack { Text("Normal"); if ALSManager.shared.getProfile() == .normal { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setALSProfileConservative() }) { HStack { Text("Conservative"); if ALSManager.shared.getProfile() == .conservative { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setALSProfileTwilight() }) { HStack { Text("Twilight"); if ALSManager.shared.getProfile() == .twilight { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setALSProfileDaybreak() }) { HStack { Text("Daybreak"); if ALSManager.shared.getProfile() == .daybreak { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setALSProfileMidday() }) { HStack { Text("Midday"); if ALSManager.shared.getProfile() == .midday { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setALSProfileSunburst() }) { HStack { Text("Sunburst"); if ALSManager.shared.getProfile() == .sunburst { Image(systemName: "checkmark") } } }
+                            Button(action: { vm.setALSProfileHighNoon() }) { HStack { Text("High Noon"); if ALSManager.shared.getProfile() == .highNoon { Image(systemName: "checkmark") } } }
                         }
                     }
                     .disabled(!vm.alsAvailable)
