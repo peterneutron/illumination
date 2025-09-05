@@ -53,11 +53,11 @@ final class IlluminationViewModel: ObservableObject {
 
     // ALS Profile
     var alsProfileName: String { ALSManager.shared.getProfile().displayName }
-    func setALSProfileEarliest() { ALSManager.shared.setProfile(.earliest); objectWillChange.send() }
-    func setALSProfileEarlier() { ALSManager.shared.setProfile(.earlier); objectWillChange.send() }
-    func setALSProfileAggressive() { ALSManager.shared.setProfile(.aggressive); objectWillChange.send() }
-    func setALSProfileNormal() { ALSManager.shared.setProfile(.normal); objectWillChange.send() }
-    func setALSProfileConservative() { ALSManager.shared.setProfile(.conservative); objectWillChange.send() }
+    func setALSProfileTwilight() { ALSManager.shared.setProfile(.twilight); objectWillChange.send() }
+    func setALSProfileDaybreak() { ALSManager.shared.setProfile(.daybreak); objectWillChange.send() }
+    func setALSProfileMidday() { ALSManager.shared.setProfile(.midday); objectWillChange.send() }
+    func setALSProfileSunburst() { ALSManager.shared.setProfile(.sunburst); objectWillChange.send() }
+    func setALSProfileHighNoon() { ALSManager.shared.setProfile(.highNoon); objectWillChange.send() }
 
     // MARK: - Polling control
     func startBackgroundPolling() {
@@ -93,11 +93,11 @@ final class IlluminationViewModel: ObservableObject {
 
     var alsProfileSymbolName: String {
         switch ALSManager.shared.getProfile() {
-        case .earliest: return "airplane"
-        case .earlier: return "car.fill"
-        case .aggressive: return "hare.fill"
-        case .normal: return "figure.walk"
-        case .conservative: return "tortoise.fill"
+        case .twilight: return "airplane"
+        case .daybreak: return "car.fill"
+        case .midday: return "hare.fill"
+        case .sunburst: return "figure.walk"
+        case .highNoon: return "tortoise.fill"
         }
     }
 
