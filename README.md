@@ -22,11 +22,11 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
     Key techniques include:
     -   **Resilient Decoding:** Safely handles raw fixed-point data, overflow sentinels, and sensor saturation events.
     -   **Adaptive Smoothing:** A time-delta-aware EMA filter minimizes noise without sacrificing responsiveness.
-    -   **Dual-Model Calibration:** A unique confidence-based blending of a direct power-law model with a day-adaptive relative model ensures accuracy in all lighting conditions.
+    -   **Simple or Calibrated Lux Mapping:** By default, Illumination uses a simple linear mapping from the raw 32‑bit sensor value to physical lux assuming full‑scale ≈ 120,000 lx (sunlight). You can optionally switch to the previous calibrated power‑law mapper (two‑point fit with `a,p,xDark`) from the Debug menu. Both feed the same day‑max relative blend for robustness.
 
     The complete methodology is detailed in our [**technical paper on the lux estimation algorithm**](assets/Algorithm.pdf).
 - Extended Dynamic Range (EDR): Go beyond the standard SDR brightness limits.
-- Ambient Light Sensing (ALS): Automatically toggles EDR and adjusts brightness based on your ambient lighting. Choose from multiple sensitivity profiles (Aggressive, Normal, Conservative) to match your preference.
+- Ambient Light Sensing (ALS): Automatically toggles EDR and adjusts brightness based on your ambient lighting. Choose from sensitivity profiles to match your preference: Twilight, Daybreak, Midday (default), Sunburst, and High Noon.
 - HDR-Aware Ducking: A standout feature that automatically reduces the brightness boost when HDR content is detected. This preserves the creative intent of HDR media without requiring manual intervention. ⚠️ Partially working ⚠️
 - Persistent HDR Tile: An optional, small video tile that can be placed in a corner of the screen to ensure EDR mode remains active, keeping EDR engaged within fullscreen applications/spaces.
 - Debug submenu with extended diagnostics and fine-grained control settings.
