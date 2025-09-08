@@ -73,6 +73,14 @@ struct LuxCalibrator: Codable {
     }
 }
 
+// Convenience for UI line
+extension ALSManager {
+    func calibratorLine() -> String {
+        let cp = calibratorParams()
+        return String(format: "Calibrator: a=%.5f, p=%.5f, xDark=%.5f", cp.a, cp.p, cp.xDark)
+    }
+}
+
 // Fixed-point + sentinel constants
 private let kFixedPointShift = 20.0                // 12.20-ish fixed point
 private let kFixedPointDiv  = pow(2.0, kFixedPointShift) // 1,048,576.0
@@ -668,5 +676,20 @@ final class ALSManager {
     // Debug: expose current calibrator parameters
     func calibratorParams() -> (a: Double, p: Double, xDark: Double) {
         return (calibrator.a, calibrator.p, calibrator.xDark)
+    }
+
+    // Set calibrator a/p with validation and persist
+    func setCalibrator(a: Double, p: Double) {
+        guard a.isFinite && a > 0 else { return }
+        guard p.isFinite && p > 0 && p < 4.0 else { return }
+        calibrator.a = a
+        calibrator.p = p
+        calibrator.save()
+    }
+
+    // Export calibrator as JSON string for clipboard/sharing
+    func calibratorJSON() -> String? {
+        guard let data = try? JSONEncoder().encode(calibrator) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 }
