@@ -7,6 +7,10 @@ import SwiftUI
 import AppKit
 import Combine
 
+final class CalibEditorState: ObservableObject {
+    @Published var show: Bool = false
+}
+
 // MARK: - Views
 
 struct IlluminationMenuBarLabel: View {
@@ -25,6 +29,7 @@ struct IlluminationMenuBarLabel: View {
 
 struct IlluminationMenuView: View {
     @ObservedObject var vm: IlluminationViewModel
+    @StateObject private var calibState = CalibEditorState()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -246,16 +251,9 @@ struct IlluminationMenuView: View {
                                 }
                             }
                             Divider()
-                            Menu("Calibration") {
-                                Group { Text("Quick Fit").font(.caption).foregroundStyle(.secondary); Button("Set xDark from Current") { vm.calibSetDarkFromCurrent() } }
-                                Divider()
-                                Group { Text("Anchor A (indoors)").font(.caption).foregroundStyle(.secondary); ForEach([200.0, 500.0, 1000.0], id: \.self) { L in Button(String(format: "Set Current → %.0f lx", L)) { vm.calibSetAnchorA(L) } } }
-                                Group { Text("Anchor B (bright)").font(.caption).foregroundStyle(.secondary); ForEach([5000.0, 20000.0, 50000.0], id: \.self) { L in Button(String(format: "Set Current → %.0f lx", L)) { vm.calibSetAnchorB(L) } } }
-                                Divider()
-                                Button("Fit and Save") { vm.calibFitAndSave() }
-                                Button("Clear Anchors") { vm.calibClearAnchors() }
-                                Button("Reset Defaults") { vm.calibResetDefaults() }.foregroundStyle(.red)
-                            }
+                            // Calibration editor can't live in a submenu (TextField not interactive there).
+                            // Provide an entry point that opens an inline editor in the main popover.
+                            Button("Open Calibrator Editor…") { vm.calibRefreshFields(); calibState.show = true }
                             Divider()
                             Menu("Experimental") { Button("HDR Detection: Auto") { vm.setHDRMode(2) } }
                         }
@@ -268,6 +266,11 @@ struct IlluminationMenuView: View {
                 }
                 .keyboardShortcut("q", modifiers: .command)
             }
+            }
+            // Inline Calibrator Editor (Debug-only; appears in main popover)
+            if vm.debugUnlocked && calibState.show {
+                Divider()
+                CalibratorEditor(vm: vm, onClose: { calibState.show = false })
             }
         }
         .padding(12)
@@ -303,6 +306,54 @@ struct IlluminationMenuView: View {
     }
 
     // luxDisplay removed; using LiveLuxLabel instead
+}
+
+// MARK: - Inline Calibrator Editor
+private struct CalibratorEditor: View {
+    @ObservedObject var vm: IlluminationViewModel
+    var onClose: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Calibration").font(.headline)
+                Spacer()
+                Button(action: onClose) { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain)
+            }
+            // Compact calibrator values (no prefix)
+            let cp = ALSManager.shared.calibratorParams()
+            Text(String(format: "a=%.5f, p=%.5f, xDark=%.5f", cp.a, cp.p, cp.xDark))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            // Vertical inputs for compact width
+            VStack(alignment: .leading, spacing: 6) {
+                Text("a:")
+                TextField("a", text: $vm.calibAString)
+                    .textFieldStyle(.roundedBorder)
+                Text("p:")
+                TextField("p", text: $vm.calibPString)
+                    .textFieldStyle(.roundedBorder)
+            }
+            // Primary actions
+            HStack(spacing: 8) {
+                Button("Set xDark from Current") { vm.calibSetDarkFromCurrent() }
+                Spacer()
+                Button("Apply") { vm.calibApplyFields(); vm.calibRefreshFields() }
+            }
+            // Secondary actions
+            HStack(spacing: 8) {
+                Button("Copy JSON") { vm.copyCalibratorJSON() }
+                Spacer()
+                Button("Reset Defaults") { vm.calibResetDefaults(); vm.calibRefreshFields() }
+                    .foregroundStyle(.red)
+            }
+            .font(.caption)
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.3)))
+        .onAppear { vm.calibRefreshFields() }
+    }
 }
 
 // MARK: - Quick Actions
@@ -505,6 +556,11 @@ private struct PercentSlider: NSViewRepresentable {
         context.coordinator.isAutoEnabled = autoEnabled
         if abs(nsView.doubleValue - value) > 0.0001 {
             nsView.doubleValue = value
+final class CalibEditorState: ObservableObject {
+    static let shared = CalibEditorState()
+    @Published var show: Bool = false
+}
+
         }
     }
 
