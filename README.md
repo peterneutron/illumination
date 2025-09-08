@@ -15,21 +15,21 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
 ## Features
 
 - Auto-Detection of EDR capable displays. ⚠️ Only Built-In at the moment ⚠️
-- Seamless System Integration: Illumination is designed to work with the native macOS auto-brightness feature enabled.
--   **Robust Ambient Light Sensing Engine:**
-    A custom signal processing pipeline that converts macOS's raw `AmbientBrightness` data into a stable and accurate real-time illuminance (lux) estimate. It's engineered to be reliable from dim indoor environments to direct sunlight without using private APIs or requiring App Sandbox entitlements.
+- Seamless System Integration: Works with macOS auto-brightness **ON**. Illumination only moves your brightness **while EDR is ON** and restores your pre‑EDR SDR level when EDR turns **OFF**.
+-   **Calibrated Ambient Light Engine:**  
+    Converts macOS’s raw `AmbientBrightness` (fixed‑point, driver‑internal) into **real‑world lux** with a power law (L = a·x^p), a **sun‑anchor** at ~120 klx, and a gated **day‑max blend** for robustness. It’s stable from dim rooms to direct sun. 
 
-    Key techniques include:
-    -   **Resilient Decoding:** Safely handles raw fixed-point data, overflow sentinels, and sensor saturation events.
-    -   **Adaptive Smoothing:** A time-delta-aware EMA filter minimizes noise without sacrificing responsiveness.
-    -   **Simple or Calibrated Lux Mapping:** By default, Illumination uses a simple linear mapping from the raw 32‑bit sensor value to physical lux assuming full‑scale ≈ 120,000 lx (sunlight). You can optionally switch to the previous calibrated power‑law mapper (two‑point fit with `a,p,xDark`) from the Debug menu. Both feed the same day‑max relative blend for robustness.
-
-    The complete methodology is detailed in our [**technical paper on the lux estimation algorithm**](assets/Algorithm.pdf).
+    The complete methodology is detailed in our [**technical paper**](assets/Algorithm.pdf).
 - Extended Dynamic Range (EDR): Go beyond the standard SDR brightness limits.
-- Ambient Light Sensing (ALS): Automatically toggles EDR and adjusts brightness based on your ambient lighting. Choose from sensitivity profiles to match your preference: Twilight, Daybreak, Midday (default), Sunburst, and High Noon.
+- Ambient Light Sensing (ALS): Automatically toggles EDR and **scales headroom** based on ambient light. Profiles are tuned for **daylight** (e.g., shade → sun) with hysteresis to avoid cloud‑flicker: Twilight, Daybreak, Midday (default), Sunburst, High Noon.
 - HDR-Aware Ducking: A standout feature that automatically reduces the brightness boost when HDR content is detected. This preserves the creative intent of HDR media without requiring manual intervention. ⚠️ Partially working ⚠️
 - Persistent HDR Tile: An optional, small video tile that can be placed in a corner of the screen to ensure EDR mode remains active, keeping EDR engaged within fullscreen applications/spaces.
 - Debug submenu with extended diagnostics and fine-grained control settings.
+
+### Known limits
+- Lux is capped at **120 000** to match observed ALS saturation.
+- EDR can draw significant power at high nits.
+- Built‑in displays only (for now).
 
 ## Getting Started: Building from Source
 

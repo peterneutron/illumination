@@ -63,6 +63,9 @@ struct LuxCalibrator: Codable {
         }
         return LuxCalibrator()
     }
+    static func exists() -> Bool {
+        return UserDefaults.standard.data(forKey: defaultsKey) != nil
+    }
     func save() {
         if let data = try? JSONEncoder().encode(self) {
             UserDefaults.standard.set(data, forKey: LuxCalibrator.defaultsKey)
@@ -285,6 +288,10 @@ final class ALSManager {
         }
         autoEnabled = false
         setAutoEnabled(Settings.alsAutoEnabled)
+        // Bootstrap-persist calibrator defaults on first run so a/p survive restarts
+        if !LuxCalibrator.exists() {
+            calibrator.save()
+        }
         start()
     }
 
@@ -624,8 +631,11 @@ final class ALSManager {
     func clearAnchors() { saveAnchor(nil, key: anchorAKey); saveAnchor(nil, key: anchorBKey) }
     func setDarkFromCurrent() {
         guard let x = debugDecodedX else { return }
+        // Only accept xDark when truly dark (near zero). Otherwise ignore to avoid corrupting Δx.
+        let epsilon: Double = 0.02 // counts in decoded X-space (~2e-2 of 1 count)
+        guard x <= epsilon else { return }
         var c = calibrator
-        c.xDark = x
+        c.xDark = 0.0
         c.save()
         calibrator = LuxCalibrator.load()
     }
@@ -654,4 +664,9 @@ final class ALSManager {
         calibrator = LuxCalibrator.load()
     }
     func resetCalibration() { calibrator = LuxCalibrator(); calibrator.save() }
+
+    // Debug: expose current calibrator parameters
+    func calibratorParams() -> (a: Double, p: Double, xDark: Double) {
+        return (calibrator.a, calibrator.p, calibrator.xDark)
+    }
 }
