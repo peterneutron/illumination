@@ -162,10 +162,7 @@ final class IlluminationViewModel: ObservableObject {
     func setMinOnSeconds(_ s: Double) { ALSManager.shared.setMinOnSeconds(s); objectWillChange.send() }
     var minOffSeconds: Double { ALSManager.shared.minOffSecondsValue() }
     func setMinOffSeconds(_ s: Double) { ALSManager.shared.setMinOffSeconds(s); objectWillChange.send() }
-    var sunDxTrigger: Double { ALSManager.shared.sunDxTriggerValue() }
-    func setSunDxTrigger(_ v: Double) { ALSManager.shared.setSunDxTrigger(v); objectWillChange.send() }
-    var relativeBlendMax: Double { ALSManager.shared.relativeBlendMaxValue() }
-    func setRelativeBlendMax(_ v: Double) { ALSManager.shared.setRelativeBlendMax(v); objectWillChange.send() }
+    // Removed tuners: sunDxTrigger, relative blend, clamp/knee, hill
 
     // MARK: - Calibration Helper
     var calibA: ALSManager.CalibAnchor? { ALSManager.shared.calibAnchorA() }
@@ -176,6 +173,8 @@ final class IlluminationViewModel: ObservableObject {
     func calibFitAndSave() { ALSManager.shared.fitCalibrationFromAnchors(); objectWillChange.send() }
     func calibClearAnchors() { ALSManager.shared.clearAnchors(); objectWillChange.send() }
     func calibResetDefaults() { ALSManager.shared.resetCalibration(); objectWillChange.send() }
+
+    // Removed Hill calibration hooks
 
     // MARK: - Utilities
     func copyDiagnosticsToPasteboard() {
@@ -188,6 +187,8 @@ final class IlluminationViewModel: ObservableObject {
     // MARK: - Lux label steps
     var luxStepMode: Int { Settings.luxStepMode }
     func setLuxStepMode(_ mode: Int) { Settings.luxStepMode = max(0, min(3, mode)); objectWillChange.send() }
+
+    // Removed algorithm selection and SunMax presets
 
     // MARK: - Advanced Options wrappers
     var supportsEDR: Bool { controller.currentGammaCapDetails().sawEDR }

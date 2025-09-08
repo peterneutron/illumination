@@ -7,9 +7,7 @@ enum Settings {
     private static let maxSlopeKey = "illumination.als.maxPercentPerSecond"
     private static let minOnKey = "illumination.als.minOnSeconds"
     private static let minOffKey = "illumination.als.minOffSeconds"
-    // ALS modeling
-    private static let sunDxTriggerKey = "illumination.als.sunDxTrigger"
-    private static let relBlendMaxKey = "illumination.als.relativeBlendMax"
+    // ALS modeling (no exposed tuners in final model)
 
     static var entryMinPercent: Double {
         get { UserDefaults.standard.object(forKey: entryMinKey) as? Double ?? 1.0 }
@@ -30,14 +28,6 @@ enum Settings {
     static var minOffSeconds: Double {
         get { UserDefaults.standard.object(forKey: minOffKey) as? Double ?? 1.5 }
         set { UserDefaults.standard.set(max(0.0, min(10.0, newValue)), forKey: minOffKey) }
-    }
-    static var sunDxTrigger: Double {
-        get { UserDefaults.standard.object(forKey: sunDxTriggerKey) as? Double ?? 1200.0 }
-        set { UserDefaults.standard.set(max(100.0, min(2047.0, newValue)), forKey: sunDxTriggerKey) }
-    }
-    static var relativeBlendMax: Double {
-        get { UserDefaults.standard.object(forKey: relBlendMaxKey) as? Double ?? 0.25 }
-        set { UserDefaults.standard.set(max(0.0, min(0.5, newValue)), forKey: relBlendMaxKey) }
     }
     // Master + brightness
     private static let masterEnabledKey = "illumination.enabled"
