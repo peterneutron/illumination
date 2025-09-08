@@ -103,9 +103,6 @@ final class IlluminationViewModel: ObservableObject {
 
     var debugDetails: [String] {
         let d = controller.currentGammaCapDetails()
-        let model = SystemInfo.getModelIdentifier() ?? "—"
-        let overlayFull = controller.overlayFullsizeEnabled()
-        let fps = controller.overlayFPSValue()
         let currentFactor = controller.currentFactorValue()
         let targetPct = Int(round(userPercent))
         let effectivePct = Int(round(BrightnessController.percent(forFactor: currentFactor, cap: d.cap)))
@@ -114,22 +111,11 @@ final class IlluminationViewModel: ObservableObject {
             return "ALS: — lx"
         }()
         var lines: [String] = [
-            "Model: \(model)",
-            String(format: "Gamma Cap: %.3f", d.cap),
-            String(format: "Raw Cap: %.3f (%@)", d.rawCap, (d.rawCap > d.cap + 0.0005) ? "clamped" : "not clamped"),
-            String(format: "EDR Ratio: %.3f", d.bestRatio),
-            String(format: "Safety Margin: %.2f", d.adaptiveMargin),
-            String(format: "Ref Gain: %.3f (alpha: %.2f)", d.refGain, d.refAlpha),
-            String(format: "Guard Mode: %@, Factor: %.0f%%", controller.isGuardEnabled() ? "On" : "Off", controller.guardFactorValue() * 100.0),
-            "Overlay: \(overlayFull ? "On" : "Off")",
-            "Overlay FPS: \(fps)",
-            String(format: "Current Factor: %.3f", currentFactor),
-            "Target %: \(targetPct)%, Effective %: \(effectivePct)%",
             luxLine,
-            "ALS Auto: \(alsAutoEnabled ? "On" : "Off")",
-            "Enabled: \(enabled ? "Yes" : "No")"
+            String(format: "Target %%: %d%%, Effective %%: %d%%", targetPct, effectivePct),
+            String(format: "Current Factor: %.3f • Guard: %@ (%.0f%%)", currentFactor, controller.isGuardEnabled() ? "On" : "Off", controller.guardFactorValue() * 100.0),
+            "Profile: \(alsProfileName)"
         ]
-        // Optional ALS internals (decoded sensor-space + blend)
         if let x = ALSManager.shared.debugDecodedX,
            let dx = ALSManager.shared.debugDx,
            let lfit = ALSManager.shared.debugLfit,
@@ -137,12 +123,10 @@ final class IlluminationViewModel: ObservableObject {
            let w = ALSManager.shared.debugBlendW {
             lines.append(String(format: "ALS X: %.3f (Δx: %.3f)", x, dx))
             lines.append(String(format: "ALS Lfit: %.0f lx, Lrel: %.0f lx, w=%.2f", lfit, lrel, w))
-            if let rmax = ALSManager.shared.debugRollingMaxDx {
-                lines.append(String(format: "ALS Rolling Δx max: %.1f", rmax))
-            }
+            if let rmax = ALSManager.shared.debugRollingMaxDx { lines.append(String(format: "ALS Rolling Δx max: %.1f", rmax)) }
         }
-        // Display probe summary
-        lines.append(contentsOf: DisplayStateProbe.shared.debugLines())
+        let cp = ALSManager.shared.calibratorParams()
+        lines.append(String(format: "Calibrator: a=%.5f, p=%.5f, xDark=%.5f", cp.a, cp.p, cp.xDark))
         return lines
     }
 

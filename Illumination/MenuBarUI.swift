@@ -209,11 +209,41 @@ struct IlluminationMenuView: View {
                         }
                             Divider()
                             Menu("ALS Tuning") {
-                                Menu("Entry Min: \(vm.entryMinPercent)%") { ForEach([1,2,5,10], id: \.self) { p in Button("\(p)%") { vm.setEntryMinPercent(p) } } }
-                                Menu(String(format: "Entry Envelope: %.1fs", vm.entryEnvelopeSeconds)) { ForEach([0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in Button(String(format: "%.1fs", s)) { vm.setEntryEnvelopeSeconds(s) } } }
-                                Menu("Max Slope: \(vm.maxPercentPerSecond)%/s") { ForEach([20, 40, 50, 80, 100], id: \.self) { v in Button("\(v)%/s") { vm.setMaxPercentPerSecond(v) } } }
-                                Menu(String(format: "Min On: %.1fs", vm.minOnSeconds)) { ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in Button(String(format: "%.1fs", s)) { vm.setMinOnSeconds(s) } } }
-                                Menu(String(format: "Min Off: %.1fs", vm.minOffSeconds)) { ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in Button(String(format: "%.1fs", s)) { vm.setMinOffSeconds(s) } } }
+                                Menu("Entry Min: \(vm.entryMinPercent)%") {
+                                    ForEach([1,2,5,10], id: \.self) { p in
+                                        Button(action: { vm.setEntryMinPercent(p) }) {
+                                            HStack { Text("\(p)%"); if vm.entryMinPercent == p { Image(systemName: "checkmark") } }
+                                        }
+                                    }
+                                }
+                                Menu(String(format: "Entry Envelope: %.1fs", vm.entryEnvelopeSeconds)) {
+                                    ForEach([0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
+                                        Button(action: { vm.setEntryEnvelopeSeconds(s) }) {
+                                            HStack { Text(String(format: "%.1fs", s)); if abs(vm.entryEnvelopeSeconds - s) < 0.0001 { Image(systemName: "checkmark") } }
+                                        }
+                                    }
+                                }
+                                Menu("Max Slope: \(vm.maxPercentPerSecond)%/s") {
+                                    ForEach([20, 40, 50, 80, 100], id: \.self) { v in
+                                        Button(action: { vm.setMaxPercentPerSecond(v) }) {
+                                            HStack { Text("\(v)%/s"); if vm.maxPercentPerSecond == v { Image(systemName: "checkmark") } }
+                                        }
+                                    }
+                                }
+                                Menu(String(format: "Min On: %.1fs", vm.minOnSeconds)) {
+                                    ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
+                                        Button(action: { vm.setMinOnSeconds(s) }) {
+                                            HStack { Text(String(format: "%.1fs", s)); if abs(vm.minOnSeconds - s) < 0.0001 { Image(systemName: "checkmark") } }
+                                        }
+                                    }
+                                }
+                                Menu(String(format: "Min Off: %.1fs", vm.minOffSeconds)) {
+                                    ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
+                                        Button(action: { vm.setMinOffSeconds(s) }) {
+                                            HStack { Text(String(format: "%.1fs", s)); if abs(vm.minOffSeconds - s) < 0.0001 { Image(systemName: "checkmark") } }
+                                        }
+                                    }
+                                }
                             }
                             Divider()
                             Menu("Calibration") {
