@@ -16,6 +16,10 @@ final class IlluminationViewModel: ObservableObject {
     private var timer: Timer?
     private var pollingActive = false
 
+    // Calibrator editing (Debug)
+    @Published var calibAString: String = ""
+    @Published var calibPString: String = ""
+
     init() {
         enabled = controller.appIsEnabled()
         userPercent = controller.currentUserPercent()
@@ -157,6 +161,25 @@ final class IlluminationViewModel: ObservableObject {
     func calibFitAndSave() { ALSManager.shared.fitCalibrationFromAnchors(); objectWillChange.send() }
     func calibClearAnchors() { ALSManager.shared.clearAnchors(); objectWillChange.send() }
     func calibResetDefaults() { ALSManager.shared.resetCalibration(); objectWillChange.send() }
+
+    // New: manual a/p editing
+    func calibRefreshFields() {
+        let cp = ALSManager.shared.calibratorParams()
+        calibAString = String(format: "%.8f", cp.a)
+        calibPString = String(format: "%.8f", cp.p)
+    }
+    func calibApplyFields() {
+        guard let a = Double(calibAString.trimmingCharacters(in: .whitespaces)), a > 0, a.isFinite else { return }
+        guard let p = Double(calibPString.trimmingCharacters(in: .whitespaces)), p > 0, p.isFinite else { return }
+        ALSManager.shared.setCalibrator(a: a, p: p)
+        objectWillChange.send()
+    }
+    func copyCalibratorJSON() {
+        if let s = ALSManager.shared.calibratorJSON() {
+            let pb = NSPasteboard.general
+            pb.clearContents(); pb.setString(s, forType: .string)
+        }
+    }
 
     // Removed Hill calibration hooks
 
