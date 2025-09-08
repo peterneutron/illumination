@@ -45,6 +45,8 @@ Sensors exhibit a baseline reading in complete darkness. This dark-level count, 
 \end{equation}
 This $\Delta x$ serves as the primary input for the subsequent estimation models.
 
+\paragraph{Note (current build).} Empirically, when the sensor is fully occluded we observe $x_{dark} \approx 0$. In the present implementation we set $x_{dark}=0$, hence the special case simplifies to $\Delta x = x$.
+
 \section{Dynamic Smoothing Filter}
 To mitigate sensor noise and prevent rapid fluctuations, a time-delta-aware Exponential Moving Average (EMA) filter is applied to the decoded counts, $x$. Let $y_t$ be the smoothed value at the current time step $t$, and $y_{t-1}$ be the value from the previous step.
 
@@ -89,11 +91,14 @@ Next, a normalized relative intensity, $\hat{x}$, is calculated:
     \hat{x} = \min\left(1, \frac{\Delta x}{\Delta x_{max}}\right)
 \end{equation}
 
-This normalized value is then mapped to a plausible lux range (e.g., 50 to 100,000 lux) using a power curve to model perceptual brightness.
+This normalized value is then mapped to a plausible lux range (e.g., 50 to 120,000 lux) using a power curve to model perceptual brightness.
 \begin{equation}
     L_{rel} = L_{min} + (L_{max} - L_{min}) \cdot \hat{x}^{\gamma}
 \end{equation}
-where $\gamma$ is a shaping exponent (e.g., 1.45).
+Finally, the reported estimate is clamped to a physical ceiling reflecting ALS saturation:
+\begin{equation}
+    L_{out} = \min( L_{est},\, L_{max} ),\quad L_{max} = 120{,}000\ \mathrm{lux}.
+\end{equation}
 
 \subsection{Confidence-Based Model Blending}
 The blending weight $w$ determines the contribution of the relative model ($L_{rel}$). The system's "confidence" in the day-max value ($\Delta x_{max}$) is low until a sufficiently bright light source (presumably the sun) has been observed.
@@ -106,7 +111,15 @@ The blending weight $w$ is then a fraction of this confidence, capped at a maxim
 \begin{equation}
     w = w_{max} \cdot C
 \end{equation}
-This ensures $L_{rel}$ only contributes significantly after the system has "seen" a bright environment and has established a reliable $\Delta x_{max}$.
+Additionally, a warm-up/gating rule prevents premature reliance on the relative model:
+\begin{equation}
+    w = 0 \quad \text{if } t < t_{\text{warmup}}\ \text{ or }\ \Delta x_{\max} < T_{\text{sun}};\quad \text{else }\ w = w_{\max}\,C.
+\end{equation}
+
+Optionally, upon observing a near-saturation \emph{sun anchor} (the last-good pre-sentinel differential count $\Delta x_{\text{sun}}$), the scale is gently adapted online:
+\begin{equation}
+    a \leftarrow (1-\beta)\,a\; +\; \beta\,\frac{L_{\text{sun,ref}}}{(\Delta x_{\text{sun}})^{p}},\quad L_{\text{sun,ref}} \in [100{,}000,\,120{,}000]\ \mathrm{lux},\ 0<\beta\ll 1.
+\end{equation}
 
 \section{Saturation Synthesis}
 When the sensor is saturated, it returns a fixed maximum value. To prevent the lux estimate from stalling, the algorithm synthesizes a surrogate sensor value.
