@@ -44,10 +44,10 @@ private enum ALSSample {
 // MARK: - Lux Calibrator (maps decoded counts → estimated lux)
 struct LuxCalibrator: Codable {
     // Seeded from user-provided measurements: sun anchor + LED steps @ 20cm
-    var a: Double = 9.163050293295044
-    var p: Double = 1.2194541017683016
+    var a: Double = 20.701263635343665
+    var p: Double = 1.13652988767883
     // Covered/baseline decoded value (raw 118,000 / 2^20)
-    var xDark: Double = 0.1125335693359375
+    var xDark: Double = 0.0
 
     func estimateLux(decodedX: Double) -> Double {
         let dx = max(0.0, decodedX - xDark)
@@ -77,6 +77,8 @@ private let kSentinelU32    = UInt32(Int32.max)    // 0x7FFFFFFF
 private let kSentinelGuard  = UInt32(0x7FFFFF00)   // treat near-top as saturated too
 private let kMaxPlausibleLux = 120_000.0           // sanity clamp (physical lux)
 private let kMaxDecodedX: Double = 2047.0          // ≈ INT32_MAX / 2^20, safe pre-sentinel ceiling (sensor-space counts)
+
+// MARK: - Final model: calibrated power law with xDark=0 and day-max relative blend
 
 // Decode helper for the undocumented IOReg key (fixed-point → decoded counts in X-space)
 private func decodeAmbientBrightness(_ prop: Any) -> ALSSample {
@@ -165,9 +167,9 @@ final class ALSManager {
     private var rollingMaxDx: Double = 0
     private var lastDxDecay = Date()
     private var hasSunAnchor: Bool = false
-    // Tuning knobs via Settings
-    private var sunDxTrigger: Double { Settings.sunDxTrigger }
-    private var relBlendMax: Double { Settings.relativeBlendMax }
+    // Fixed internal blend parameters (previously tunable)
+    private let sunDxTriggerConst: Double = 1200.0
+    private let relBlendMaxConst: Double = 0.25
     private var warmupUntil: Date = Date().addingTimeInterval(2.0)
 
     // Stall-breaker state for saturation handling
@@ -208,6 +210,7 @@ final class ALSManager {
     private(set) var debugLrel: Double? = nil
     private(set) var debugBlendW: Double? = nil
     private(set) var debugRollingMaxDx: Double? = nil
+    // Removed: debug fields for alternate models
 
     // Thresholds + dwell from profile (brightness/enable policy; keep your semantics)
     private var onLux: Double {
@@ -278,7 +281,7 @@ final class ALSManager {
             // Write back migrated value if legacy key was used
             if p.rawValue != s { Settings.alsProfileRaw = p.rawValue }
         } else {
-            profile = .sunburst
+            profile = .midday
         }
         autoEnabled = false
         setAutoEnabled(Settings.alsAutoEnabled)
@@ -337,7 +340,7 @@ final class ALSManager {
             let mult = multBase
             let xSmoothed = ema(decodedX, state: &lpState, dt: dt, tau: tau, mult: mult)
 
-            // Estimate physical lux from counts via calibrator
+            // Estimate physical lux from counts via calibrated power-law
             let Lfit = calibrator.estimateLux(decodedX: xSmoothed)
 
             // Blend with day-max relative model for robustness (only after confidence)
@@ -347,10 +350,10 @@ final class ALSManager {
             // Confidence for using relative model: only after warmup and once we've seen strong daylight
             var w = 0.0
             if now >= warmupUntil {
-                if hasSunAnchor || rollingMaxDx >= sunDxTrigger {
+                if hasSunAnchor || rollingMaxDx >= sunDxTriggerConst {
                     let xSun = 2047.0
-                    let conf = min(1.0, max(0.0, (rollingMaxDx - sunDxTrigger) / max(1.0, (xSun - sunDxTrigger))))
-                    w = relBlendMax * conf // ramp relative blend up as we gain confidence
+                    let conf = min(1.0, max(0.0, (rollingMaxDx - sunDxTriggerConst) / max(1.0, (xSun - sunDxTriggerConst))))
+                    w = relBlendMaxConst * conf // ramp relative blend up as we gain confidence
                 }
             }
 
@@ -395,10 +398,10 @@ final class ALSManager {
 
                 var w = 0.0
                 if now >= warmupUntil {
-                    if hasSunAnchor || rollingMaxDx >= sunDxTrigger {
+                    if hasSunAnchor || rollingMaxDx >= sunDxTriggerConst {
                         let xSun = 2047.0
-                        let conf = min(1.0, max(0.0, (rollingMaxDx - sunDxTrigger) / max(1.0, (xSun - sunDxTrigger))))
-                        w = relBlendMax * conf
+                        let conf = min(1.0, max(0.0, (rollingMaxDx - sunDxTriggerConst) / max(1.0, (xSun - sunDxTriggerConst))))
+                        w = relBlendMaxConst * conf
                     }
                 }
 
@@ -588,7 +591,7 @@ final class ALSManager {
         aboveCount = 0; belowCount = 0
     }
 
-    // MARK: - Debug tuners API
+    // MARK: - Debug tuners API (kept minimal)
     func setEntryMinPercent(_ p: Double) { Settings.entryMinPercent = p }
     func setEntryEnvelopeSeconds(_ s: Double) { Settings.entryEnvelopeSeconds = s }
     func setMaxPercentPerSecond(_ v: Double) { Settings.maxPercentPerSecond = v }
@@ -600,10 +603,6 @@ final class ALSManager {
     func maxPercentPerSecondValue() -> Double { maxPercentPerSecond }
     func minOnSecondsValue() -> Double { minOnSecondsGuard }
     func minOffSecondsValue() -> Double { minOffSecondsGuard }
-    func sunDxTriggerValue() -> Double { sunDxTrigger }
-    func setSunDxTrigger(_ v: Double) { Settings.sunDxTrigger = v }
-    func relativeBlendMaxValue() -> Double { relBlendMax }
-    func setRelativeBlendMax(_ v: Double) { Settings.relativeBlendMax = v }
 
     // MARK: - Calibration helper
     struct CalibAnchor: Codable { let dx: Double; let lux: Double }
