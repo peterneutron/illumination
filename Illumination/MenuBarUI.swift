@@ -90,10 +90,13 @@ struct IlluminationMenuView: View {
                 }
                 PercentSlider(
                     value: Binding(
-                    get: { vm.userPercent },
-                    set: { vm.setPercent($0) }
+                        // Show 0% while disabled to match the label,
+                        // but keep the underlying intent untouched.
+                        get: { vm.enabled ? vm.userPercent : 0.0 },
+                        set: { vm.setPercent($0) }
                     ),
-                    autoEnabled: vm.alsAutoEnabled
+                    autoEnabled: vm.alsAutoEnabled,
+                    masterEnabled: vm.enabled
                 )
                 .disabled(!vm.enabled || vm.alsAutoEnabled)
             .opacity((!vm.enabled || vm.alsAutoEnabled) ? 0.5 : 1.0)
@@ -542,6 +545,7 @@ private struct LivePercentLabel: NSViewRepresentable {
 private struct PercentSlider: NSViewRepresentable {
     @Binding var value: Double
     var autoEnabled: Bool = false
+    var masterEnabled: Bool = true
 
     func makeNSView(context: Context) -> NSSlider {
         let slider = NSSlider(value: value, minValue: 0.0, maxValue: 100.0, target: context.coordinator, action: #selector(Coordinator.changed(_:)))
@@ -554,13 +558,10 @@ private struct PercentSlider: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSSlider, context: Context) {
         context.coordinator.isAutoEnabled = autoEnabled
-        if abs(nsView.doubleValue - value) > 0.0001 {
-            nsView.doubleValue = value
-final class CalibEditorState: ObservableObject {
-    static let shared = CalibEditorState()
-    @Published var show: Bool = false
-}
-
+        context.coordinator.masterEnabled = masterEnabled
+        let displayValue = masterEnabled ? value : 0.0
+        if abs(nsView.doubleValue - displayValue) > 0.0001 {
+            nsView.doubleValue = displayValue
         }
     }
 
@@ -570,6 +571,7 @@ final class CalibEditorState: ObservableObject {
         var value: Binding<Double>
         var timer: Timer?
         var isAutoEnabled: Bool = false
+        var masterEnabled: Bool = true
         weak var sliderRef: NSSlider?
 
         init(value: Binding<Double>) { self.value = value }
@@ -579,7 +581,8 @@ final class CalibEditorState: ObservableObject {
             timer?.invalidate(); timer = nil
             timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 guard let self = self, self.isAutoEnabled, let slider = self.sliderRef else { return }
-                let pct = BrightnessController.shared.currentUserPercent()
+                let bc = BrightnessController.shared
+                let pct = bc.appIsEnabled() ? bc.currentUserPercent() : 0.0
                 let rounded = round(pct)
                 if abs(slider.doubleValue - rounded) > 0.0001 {
                     slider.doubleValue = rounded
