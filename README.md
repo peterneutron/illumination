@@ -53,18 +53,18 @@ Before you can build from the command line, you need to configure code signing o
 4.  From the **"Team"** dropdown, select your personal Apple ID. Xcode will automatically create a local development certificate for you.
 5.  You can now close Xcode.
 
-#### 3. Build the App
+#### 3. Pick a Build Lane
 
-From the root of the project directory, run the main `make` command:
+The Makefile now exposes explicit lanes for unsigned, development-signed, and distribution builds. All artifacts land in `./build`.
 
-```bash
-make
-```
-This command will:
-- Build and archive the application.
-- Export a clean, runnable `Illumination.app` into a `./build` directory.
+- `make build` – unsigned local build (default). Running `make` with no target is equivalent.
+- `make devsigned` – development-signed build using automatic signing. Provide a certificate explicitly with `SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" make devsigned`, or leave it unset to launch `scripts/select_signing_identity.sh`, which will discover certificates via the `security` tool and prompt you to choose.
+- `make archive` – manual-signing archive intended for maintainers. Accepts the same `SIGNING_IDENTITY` variable and falls back to the helper script if needed.
+- `make export` – exports an `.app` from the latest archive using `ExportOptions.plist`.
+- `make package` – zips the exported app into `build/Illumination.zip`.
+- `make clean` – removes `./build`.
 
-You can now run the app from the `./build` folder.
+> The signing helper requires the Xcode command line tools and at least one Apple Development certificate in your login keychain.
 
 ## Acknowledgments
 
