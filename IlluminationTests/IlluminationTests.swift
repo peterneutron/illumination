@@ -147,6 +147,49 @@ struct IlluminationTests {
         #expect(IlluminationViewModel.resolveMasterControlState(masterEnabled: false, autoEnabled: true) == .auto)
     }
 
+    @Test("Slider display policy uses one source per mode and clamps bounds")
+    func sliderDisplayPolicy() {
+        let autoValue = IlluminationViewModel.sliderDisplayPercent(
+            autoEnabled: true,
+            masterEnabled: true,
+            effectivePercent: 61.7,
+            manualPercent: 20.0
+        )
+        #expect(abs(autoValue - 61.7) < 0.0001)
+
+        let manualValue = IlluminationViewModel.sliderDisplayPercent(
+            autoEnabled: false,
+            masterEnabled: true,
+            effectivePercent: 40.0,
+            manualPercent: 33.0
+        )
+        #expect(abs(manualValue - 33.0) < 0.0001)
+
+        let offValue = IlluminationViewModel.sliderDisplayPercent(
+            autoEnabled: true,
+            masterEnabled: false,
+            effectivePercent: 70.0,
+            manualPercent: 55.0
+        )
+        #expect(offValue == 0.0)
+
+        let clampedHigh = IlluminationViewModel.sliderDisplayPercent(
+            autoEnabled: true,
+            masterEnabled: true,
+            effectivePercent: 140.0,
+            manualPercent: 10.0
+        )
+        #expect(clampedHigh == 100.0)
+
+        let clampedLow = IlluminationViewModel.sliderDisplayPercent(
+            autoEnabled: false,
+            masterEnabled: true,
+            effectivePercent: 10.0,
+            manualPercent: -5.0
+        )
+        #expect(clampedLow == 0.0)
+    }
+
     @Test("Blocked app registry seeds once and remains stable")
     func blockedAppRegistrySeedAndStability() {
         let suiteName = "IlluminationTests.HDRAppSeed"

@@ -13,6 +13,9 @@ enum MasterControlState: Equatable {
 final class IlluminationViewModel: ObservableObject {
     @Published var enabled: Bool
     @Published var userPercent: Double
+    @Published private(set) var effectivePercent: Double
+    @Published private(set) var tileVisibleNow: Bool
+    @Published private(set) var runtimeMode: RuntimeControlMode
     @Published var debugUnlocked: Bool = false
     @Published var alsAutoEnabled: Bool = false
     @Published var alsAvailable: Bool = ALSManager.shared.available
@@ -25,26 +28,23 @@ final class IlluminationViewModel: ObservableObject {
 
     private let controller = BrightnessController.shared
     private var timer: Timer?
-    private var pollingActive = false
     private var autoModeBeforeMasterOff: Bool = false
 
-    private func syncFromController() {
-        let nextEnabled = controller.appIsEnabled()
-        let nextUserPercent = controller.currentUserPercent()
-        let nextALSAvailable = ALSManager.shared.available
-        let nextALSAutoEnabled = ALSManager.shared.autoEnabled
+    private func applyRuntimeState(_ state: RuntimeUIState) {
+        enabled = state.masterEnabled
+        userPercent = state.manualPercent
+        effectivePercent = state.effectivePercent
+        tileVisibleNow = state.tileVisibleNow
+        runtimeMode = state.mode
+        alsAutoEnabled = state.mode == .auto
+    }
 
-        if enabled != nextEnabled {
-            enabled = nextEnabled
-        }
-        if abs(userPercent - nextUserPercent) > 0.0001 {
-            userPercent = nextUserPercent
-        }
+    private func syncFromController() {
+        let snapshot = controller.uiStateSnapshot()
+        let nextALSAvailable = ALSManager.shared.available
+        applyRuntimeState(snapshot)
         if alsAvailable != nextALSAvailable {
             alsAvailable = nextALSAvailable
-        }
-        if alsAutoEnabled != nextALSAutoEnabled {
-            alsAutoEnabled = nextALSAutoEnabled
         }
         if controller.currentGammaCapDetails().sawEDR && edrUnsupportedConfirmed {
             edrUnsupportedConfirmed = false
@@ -56,10 +56,15 @@ final class IlluminationViewModel: ObservableObject {
     @Published var calibPString: String = ""
 
     init() {
-        enabled = controller.appIsEnabled()
-        userPercent = controller.currentUserPercent()
-        alsAutoEnabled = ALSManager.shared.autoEnabled
+        let snapshot = controller.uiStateSnapshot()
+        enabled = snapshot.masterEnabled
+        userPercent = snapshot.manualPercent
+        effectivePercent = snapshot.effectivePercent
+        tileVisibleNow = snapshot.tileVisibleNow
+        runtimeMode = snapshot.mode
+        alsAutoEnabled = snapshot.mode == .auto
         controller.setEnabled(enabled)
+        startBackgroundPolling()
         // Initial capability probe with retry before gating
         performEDRCheckWithRetry()
     }
@@ -87,7 +92,7 @@ final class IlluminationViewModel: ObservableObject {
     func setPercent(_ p: Double) {
         let clamped = max(0.0, min(100.0, p))
         controller.setUserPercent(clamped)
-        userPercent = clamped
+        syncFromController()
     }
 
     // ALS Auto
@@ -125,19 +130,28 @@ final class IlluminationViewModel: ObservableObject {
     var appScope: Int { controller.appPolicyScopeValue() }
     func setAppScope(_ scope: Int) {
         controller.setAppPolicyScope(scope)
-        objectWillChange.send()
+        syncFromController()
     }
     var appPolicyScopeName: String {
-        switch appScope {
+        switch controller.uiStateSnapshot().scope {
         case 0: return String(localized: "Everywhere")
         default: return String(localized: "Apps")
         }
     }
-    var appPolicyBlocked: Bool { controller.appPolicyDiagnostics().result == "blocked" }
+    var appPolicyBlocked: Bool { controller.uiStateSnapshot().denylistBlocked }
     var appPolicyBlockedLabel: String {
-        let policy = controller.appPolicyDiagnostics()
-        return policy.result == "blocked" ? policy.frontmostBundleID : ""
+        let state = controller.uiStateSnapshot()
+        return state.denylistBlocked ? (state.blockedAppName ?? "") : ""
     }
+    var sliderDisplayPercent: Double {
+        IlluminationViewModel.sliderDisplayPercent(
+            autoEnabled: alsAutoEnabled,
+            masterEnabled: enabled,
+            effectivePercent: effectivePercent,
+            manualPercent: userPercent
+        )
+    }
+    var runtimeTileEnabled: Bool { controller.uiStateSnapshot().tileEnabled }
 
     // ALS Profile
     var alsProfileName: String { ALSManager.shared.getProfile().displayName }
@@ -155,24 +169,21 @@ final class IlluminationViewModel: ObservableObject {
 
     // MARK: - Polling control
     func startBackgroundPolling() {
-        guard !pollingActive else { return }
-        pollingActive = true
+        guard timer == nil else { return }
         timer?.invalidate()
         timer = nil
         syncFromController()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.syncFromController()
             }
         }
-        timer?.tolerance = 0.2
+        timer?.tolerance = 0.05
         if let t = timer { RunLoop.main.add(t, forMode: .common) }
     }
 
     func stopBackgroundPolling() {
-        pollingActive = false
-        timer?.invalidate()
-        timer = nil
+        // Keep polling active while menu is open to avoid stale UI state.
     }
 
     func refreshNow() {
@@ -181,13 +192,13 @@ final class IlluminationViewModel: ObservableObject {
 
     // MARK: - Derived status
     var statusText: String {
-        let policy = controller.appPolicyDiagnostics()
-        if policy.result == "blocked" {
-            let label = policy.frontmostBundleID == "unknown" ? String(localized: "app") : policy.frontmostBundleID
+        let state = controller.uiStateSnapshot()
+        if state.denylistBlocked {
+            let label = state.blockedAppName ?? String(localized: "app")
             return String(format: String(localized: "Blocked by app: %@"), label)
         }
-        if alsAutoEnabled { return String(localized: "Automatic") }
-        return enabled ? String(localized: "Enabled") : String(localized: "Disabled")
+        if state.mode == .auto { return String(localized: "Automatic") }
+        return state.masterEnabled ? String(localized: "Enabled") : String(localized: "Disabled")
     }
 
     var alsProfileSymbolName: String {
@@ -453,6 +464,17 @@ extension IlluminationViewModel {
     nonisolated static func resolveMasterControlState(masterEnabled: Bool, autoEnabled: Bool) -> MasterControlState {
         if autoEnabled { return .auto }
         return masterEnabled ? .manual : .off
+    }
+
+    nonisolated static func sliderDisplayPercent(
+        autoEnabled: Bool,
+        masterEnabled: Bool,
+        effectivePercent: Double,
+        manualPercent: Double
+    ) -> Double {
+        guard masterEnabled else { return 0.0 }
+        let raw = autoEnabled ? effectivePercent : manualPercent
+        return min(100.0, max(0.0, raw))
     }
 }
 
