@@ -170,20 +170,19 @@ final class IlluminationViewModel: ObservableObject {
     // MARK: - Polling control
     func startBackgroundPolling() {
         guard timer == nil else { return }
-        timer?.invalidate()
-        timer = nil
         syncFromController()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.syncFromController()
             }
         }
-        timer?.tolerance = 0.05
+        timer?.tolerance = 0.2
         if let t = timer { RunLoop.main.add(t, forMode: .common) }
     }
 
     func stopBackgroundPolling() {
-        // Keep polling active while menu is open to avoid stale UI state.
+        timer?.invalidate()
+        timer = nil
     }
 
     func refreshNow() {

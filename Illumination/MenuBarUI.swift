@@ -154,9 +154,9 @@ struct IlluminationMenuView: View {
         .frame(width: 320)
         .onAppear {
             vm.refreshNow()
-            vm.startBackgroundPolling()
+            vm.stopBackgroundPolling()
         }
-        .onDisappear { vm.refreshNow() }
+        .onDisappear { vm.startBackgroundPolling() }
     }
 
     private struct NotSupportedView: View {
@@ -419,12 +419,14 @@ private struct PercentSlider: NSViewRepresentable {
         slider.isContinuous = true
         slider.numberOfTickMarks = 0
         slider.allowsTickMarkValuesOnly = false
+        context.coordinator.start(slider: slider)
         return slider
     }
 
     func updateNSView(_ nsView: NSSlider, context: Context) {
         context.coordinator.isAutoEnabled = autoEnabled
         context.coordinator.masterEnabled = masterEnabled
+        guard !autoEnabled else { return }
         let displayValue = min(100.0, max(0.0, masterEnabled ? value : 0.0))
         if abs(nsView.doubleValue - displayValue) > 0.0001 {
             nsView.doubleValue = displayValue
@@ -435,10 +437,31 @@ private struct PercentSlider: NSViewRepresentable {
 
     final class Coordinator: NSObject {
         var value: Binding<Double>
+        var timer: Timer?
         var isAutoEnabled: Bool = false
         var masterEnabled: Bool = true
+        weak var sliderRef: NSSlider?
 
         init(value: Binding<Double>) { self.value = value }
+        func start(slider: NSSlider) {
+            sliderRef = slider
+            timer?.invalidate()
+            timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+                guard let self = self, let slider = self.sliderRef, self.isAutoEnabled else { return }
+                let state = BrightnessController.shared.uiStateSnapshot()
+                let display = IlluminationViewModel.sliderDisplayPercent(
+                    autoEnabled: true,
+                    masterEnabled: state.masterEnabled,
+                    effectivePercent: state.effectivePercent,
+                    manualPercent: state.manualPercent
+                )
+                if abs(slider.doubleValue - display) > 0.0001 {
+                    slider.doubleValue = display
+                }
+            }
+            if let t = timer { RunLoop.main.add(t, forMode: .common) }
+        }
+        deinit { timer?.invalidate() }
         @objc func changed(_ sender: NSSlider) {
             guard !isAutoEnabled, masterEnabled else { return }
             let rounded = round(sender.doubleValue)
