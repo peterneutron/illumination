@@ -154,6 +154,11 @@ final class GammaTechnique {
 final class BrightnessController {
     static let shared = BrightnessController()
 
+    private struct AppPolicySnapshot {
+        let masterEnabled: Bool
+        let userPercent: Double
+    }
+
     private let technique = GammaTechnique()
     private var enabled: Bool = false
     private var factor: Double = 1.0
@@ -182,6 +187,13 @@ final class BrightnessController {
     private var hdrLastFrontmostBundleID: String = "unknown"
     private var hdrLastMatch: Bool = false
     private var hdrLastGate: String = "Off"
+    private var appPolicyScope: AppPolicyScope = .apps
+    private var appPolicyFrontmostBundleID: String = "unknown"
+    private var appPolicyDenylisted: Bool = false
+    private var appPolicyResult: String = "allowed"
+    private var appPolicyRestorePending: Bool = false
+    private var denylistBlocked: Bool = false
+    private var denylistSnapshot: AppPolicySnapshot?
 
     private func onMainSync<T>(_ body: () -> T) -> T {
         if Thread.isMainThread { return body() }
@@ -205,8 +217,11 @@ final class BrightnessController {
         var storedMode = Settings.hdrRegionSamplerMode
         // Migration: remove "On" (1); map to "Apps" (3). Keep Auto (2) but hidden in UI.
         if storedMode == 1 { storedMode = 3; Settings.hdrRegionSamplerMode = storedMode }
+        // Experimental isolation: keep HDR detection mode off by default in non-debug flows.
+        if storedMode != 0 { storedMode = 0; Settings.hdrRegionSamplerMode = 0 }
         self.hdrRegionSamplerMode = storedMode
         self.hdrDuckFadeDuration = Settings.hdrFadeDuration
+        self.appPolicyScope = AppPolicyScope(rawValue: Settings.appPolicyScope) ?? .apps
         // Migrate: if previous value looked like percentage (e.g. > 2.0), map to factor
         if let v = storedValue {
             if v >= 1.0 && v <= 2.0 {
@@ -255,6 +270,11 @@ final class BrightnessController {
     }
 
     private func setEnabledOnMain(_ enabled: Bool) {
+        if denylistBlocked && enabled {
+            self.enabled = false
+            Settings.masterEnabled = false
+            return
+        }
         // If EDR not supported, force disabled
         let supportsEDR = currentGammaCapDetails().sawEDR
         let request = enabled && supportsEDR
@@ -417,6 +437,7 @@ final class BrightnessController {
             guard let self = self else { return }
             let details = self.currentGammaCapDetails()
             let cap = details.cap
+            self.evaluateAppPolicyOverride()
             if self.enabled {
                 let newFactor = BrightnessController.factor(forPercent: self.userPercent, cap: cap)
                 var effective = newFactor
@@ -487,6 +508,45 @@ final class BrightnessController {
         capPoller?.tolerance = 0.2
         if let capPoller {
             RunLoop.main.add(capPoller, forMode: .common)
+        }
+    }
+
+    private func evaluateAppPolicyOverride() {
+        let frontmost = HDRAppList.frontmostAppInfo()
+        let denylisted = HDRAppList.isBundleIDDenylisted(frontmost.bundleID)
+        let decision = AppPolicy.decide(scope: appPolicyScope, frontmostDenylisted: denylisted)
+
+        appPolicyFrontmostBundleID = frontmost.bundleID ?? "unknown"
+        appPolicyDenylisted = denylisted
+        appPolicyResult = decision.result
+        appPolicyRestorePending = denylistSnapshot != nil
+
+        if decision.isBlocked {
+            if !denylistBlocked {
+                denylistSnapshot = AppPolicySnapshot(masterEnabled: enabled, userPercent: userPercent)
+            }
+            denylistBlocked = true
+            appPolicyRestorePending = denylistSnapshot != nil
+            setEnabledOnMain(false)
+            return
+        }
+
+        if denylistBlocked, let snapshot = denylistSnapshot {
+            denylistBlocked = false
+            denylistSnapshot = nil
+            appPolicyRestorePending = false
+
+            userPercent = snapshot.userPercent
+            let restoreCap = currentGammaCap()
+            factor = BrightnessController.factor(forPercent: userPercent, cap: restoreCap)
+            Settings.brightnessFactor = factor
+            setEnabledOnMain(snapshot.masterEnabled)
+            if snapshot.masterEnabled {
+                technique.adjust(factor: Float(factor))
+            }
+        } else {
+            denylistBlocked = false
+            appPolicyRestorePending = false
         }
     }
 
@@ -603,12 +663,25 @@ final class BrightnessController {
         }
     }
 
+    func appPolicyScopeValue() -> Int { onMainSync { appPolicyScope.rawValue } }
+    func setAppPolicyScope(_ scope: Int) {
+        onMainSync {
+            appPolicyScope = AppPolicyScope(rawValue: scope) ?? .apps
+            Settings.appPolicyScope = appPolicyScope.rawValue
+            if appPolicyScope == .everywhere {
+                denylistBlocked = false
+                appPolicyResult = "allowed"
+            }
+        }
+    }
+    func isDenylistBlocked() -> Bool { onMainSync { denylistBlocked } }
+
     private func isHDRContentLikely(bestRatioHint: Double) -> Bool {
         _ = bestRatioHint
         // Use region sampler based on mode; gate by app list in Auto/Apps.
         let mode = hdrRegionSamplerModeValue()
         let frontmost = HDRAppList.frontmostAppInfo()
-        let matched = HDRAppList.isBundleIDEnabled(frontmost.bundleID)
+        let matched = !HDRAppList.isBundleIDDenylisted(frontmost.bundleID)
         hdrLastFrontmostBundleID = frontmost.bundleID ?? "unknown"
         hdrLastMatch = matched
 
@@ -648,6 +721,10 @@ final class BrightnessController {
 
     func hdrDetectionDiagnostics() -> (frontmostBundleID: String, matched: Bool, gate: String) {
         onMainSync { (hdrLastFrontmostBundleID, hdrLastMatch, hdrLastGate) }
+    }
+
+    func appPolicyDiagnostics() -> (frontmostBundleID: String, denylisted: Bool, scope: String, result: String, restorePending: Bool) {
+        onMainSync { (appPolicyFrontmostBundleID, appPolicyDenylisted, appPolicyScope.displayName, appPolicyResult, appPolicyRestorePending) }
     }
     func setGuardEnabled(_ enabled: Bool) {
         onMainSync {

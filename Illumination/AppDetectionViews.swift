@@ -6,64 +6,83 @@ struct AppDetectionMenu: View {
 
     var body: some View {
         Group {
-            Text("App Detection").font(.caption).foregroundStyle(.secondary)
+            Text("App Overrides").font(.caption).foregroundStyle(.secondary)
 
-            Menu("Detection: \(modeName(vm.hdrMode))") {
-                ForEach([(0, "Off"), (3, "Apps")], id: \.0) { mode in
-                    Button(action: { vm.setHDRMode(mode.0) }) {
+            Menu("Mode: \(vm.modeIsAuto ? "Auto" : "Manual")") {
+                Button(action: { vm.setModeIsAuto(false) }) {
+                    HStack {
+                        Text("Manual")
+                        if !vm.modeIsAuto { Image(systemName: "checkmark") }
+                    }
+                }
+                Button(action: { vm.setModeIsAuto(true) }) {
+                    HStack {
+                        Text("Auto")
+                        if vm.modeIsAuto { Image(systemName: "checkmark") }
+                    }
+                }
+            }
+            .accessibilityIdentifier("app-policy-mode-menu")
+
+            Menu("Scope: \(vm.appPolicyScopeName)") {
+                ForEach([(0, "Everywhere"), (1, "Apps")], id: \.0) { scope in
+                    Button(action: { vm.setAppScope(scope.0) }) {
                         HStack {
-                            Text(mode.1)
-                            if vm.hdrMode == mode.0 { Image(systemName: "checkmark") }
+                            Text(scope.1)
+                            if vm.appScope == scope.0 { Image(systemName: "checkmark") }
                         }
                     }
                 }
             }
-            .accessibilityIdentifier("app-detection-mode-menu")
+            .accessibilityIdentifier("app-policy-scope-menu")
 
-            Button("Add Frontmost App (\(vm.frontmostAppDisplayLabel))") {
-                vm.addFrontmostHDRApp()
+            if vm.appPolicyBlocked {
+                Text("Blocked by app: \(vm.appPolicyBlockedLabel)")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("app-policy-blocked-label")
             }
-            .accessibilityIdentifier("app-detection-add-frontmost")
-            .disabled(!vm.canAddFrontmostHDRApp)
-            .help(vm.canAddFrontmostHDRApp ? "Add the frontmost app to App Detection." : vm.addFrontmostDisabledReason)
+
+            Button("Add Frontmost Blocked App (\(vm.frontmostAppDisplayLabel))") {
+                vm.addFrontmostBlockedApp()
+            }
+            .accessibilityIdentifier("app-policy-add-frontmost")
+            .disabled(!vm.canAddFrontmostBlockedApp)
+            .help(vm.canAddFrontmostBlockedApp ? "Add the frontmost app to blocked apps." : vm.addFrontmostDisabledReason)
 
             Button("Add from Installed Apps…") {
                 onOpenAppPicker()
             }
-            .accessibilityIdentifier("app-detection-add-installed")
+            .accessibilityIdentifier("app-policy-add-installed")
 
-            Menu("Managed Apps") {
-                let entries = vm.hdrManagedApps
+            Menu("Blocked Apps") {
+                let entries = vm.blockedApps
                 if entries.isEmpty {
-                    Text("No managed apps yet.")
+                    Text("No blocked apps configured.")
                 } else {
                     ForEach(entries, id: \.bundleID) { entry in
                         Menu(entry.displayName ?? entry.bundleID) {
-                            let isEnabled = entry.isEnabled
-                            Button(isEnabled ? "Disable" : "Enable") {
-                                vm.setHDRAppEnabled(bundleID: entry.bundleID, enabled: !isEnabled)
+                            let isBlocked = entry.isEnabled
+                            Button(isBlocked ? "Unblock" : "Block") {
+                                vm.setBlockedAppEnabled(bundleID: entry.bundleID, enabled: !isBlocked)
                             }
                             if !entry.isDefault {
                                 Divider()
                                 Button("Remove") {
-                                    vm.removeHDRApp(bundleID: entry.bundleID)
+                                    vm.removeBlockedApp(bundleID: entry.bundleID)
                                 }
                             }
                         }
                     }
                 }
             }
-            .accessibilityIdentifier("app-detection-managed-apps")
+            .accessibilityIdentifier("app-policy-blocked-apps")
 
-            Button("Reset App Defaults") {
-                vm.resetHDRAppDefaults()
+            Button("Reset Blocked App Defaults") {
+                vm.resetBlockedAppDefaults()
             }
-            .accessibilityIdentifier("app-detection-reset-defaults")
+            .accessibilityIdentifier("app-policy-reset-defaults")
         }
-    }
-
-    private func modeName(_ mode: Int) -> String {
-        BrightnessController.modeName(mode)
     }
 }
 
@@ -101,7 +120,7 @@ struct AppPickerPanel: View {
                     LazyVStack(alignment: .leading, spacing: 6) {
                         ForEach(visibleApps, id: \.bundleID) { app in
                             Button(action: {
-                                vm.addHDRApp(bundleID: app.bundleID, displayName: app.displayName)
+                                vm.addBlockedApp(bundleID: app.bundleID, displayName: app.displayName)
                             }) {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {

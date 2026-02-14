@@ -48,7 +48,7 @@ final class IlluminationViewModel: ObservableObject {
     func setEnabled(_ on: Bool) {
         Settings.masterEnabled = on
         controller.setEnabled(on)
-        enabled = on
+        enabled = controller.appIsEnabled()
     }
 
     func setEnabledFromUser(_ on: Bool) {
@@ -66,6 +66,26 @@ final class IlluminationViewModel: ObservableObject {
     func setALSMode(_ on: Bool) {
         alsAutoEnabled = on
         ALSManager.shared.setAutoEnabled(on)
+    }
+
+    var modeIsAuto: Bool { alsAutoEnabled }
+    func setModeIsAuto(_ on: Bool) { setALSMode(on) }
+
+    var appScope: Int { controller.appPolicyScopeValue() }
+    func setAppScope(_ scope: Int) {
+        controller.setAppPolicyScope(scope)
+        objectWillChange.send()
+    }
+    var appPolicyScopeName: String {
+        switch appScope {
+        case 0: return "Everywhere"
+        default: return "Apps"
+        }
+    }
+    var appPolicyBlocked: Bool { controller.appPolicyDiagnostics().result == "blocked" }
+    var appPolicyBlockedLabel: String {
+        let policy = controller.appPolicyDiagnostics()
+        return policy.result == "blocked" ? policy.frontmostBundleID : ""
     }
 
     // ALS Profile
@@ -100,6 +120,11 @@ final class IlluminationViewModel: ObservableObject {
 
     // MARK: - Derived status
     var statusText: String {
+        let policy = controller.appPolicyDiagnostics()
+        if policy.result == "blocked" {
+            let label = policy.frontmostBundleID == "unknown" ? "app" : policy.frontmostBundleID
+            return "Blocked by app: \(label)"
+        }
         if alsAutoEnabled { return "Automatic" }
         return enabled ? "Enabled" : "Disabled"
     }
@@ -140,10 +165,17 @@ final class IlluminationViewModel: ObservableObject {
         }
         let cp = ALSManager.shared.calibratorParams()
         lines.append(String(format: "Calibrator: a=%.5f, p=%.5f, xDark=%.5f", cp.a, cp.p, cp.xDark))
+        let policy = controller.appPolicyDiagnostics()
+        lines.append("App Policy Frontmost: \(policy.frontmostBundleID)")
+        lines.append("App Policy Denylisted: \(policy.denylisted ? "yes" : "no")")
+        lines.append("App Policy Scope: \(policy.scope)")
+        lines.append("App Policy Result: \(policy.result)")
+        lines.append("App Policy Restore Pending: \(policy.restorePending ? "yes" : "no")")
+
         let detection = controller.hdrDetectionDiagnostics()
-        lines.append("App Detection Frontmost: \(detection.frontmostBundleID)")
-        lines.append("App Detection Match: \(detection.matched ? "matched" : "unmatched")")
-        lines.append("App Detection Gate: \(detection.gate)")
+        lines.append("Experimental HDR Frontmost: \(detection.frontmostBundleID)")
+        lines.append("Experimental HDR Match: \(detection.matched ? "matched" : "unmatched")")
+        lines.append("Experimental HDR Gate: \(detection.gate)")
         if let issue = RuntimeDiagnostics.shared.lastIssue {
             lines.append("Runtime: \(issue)")
         }
@@ -243,14 +275,14 @@ final class IlluminationViewModel: ObservableObject {
     var tileSize: Int { TileFeature.shared.size }
     func setTileSize(_ px: Int) { TileFeature.shared.size = px; objectWillChange.send() }
 
-    var hdrManagedApps: [HDRAppEntry] { HDRAppList.allEntries() }
+    var blockedApps: [HDRAppEntry] { HDRAppList.allDenylistedEntries() }
 
-    var canAddFrontmostHDRApp: Bool {
+    var canAddFrontmostBlockedApp: Bool {
         HDRAppList.frontmostAppInfo().bundleID != nil
     }
 
     var addFrontmostDisabledReason: String {
-        if canAddFrontmostHDRApp { return "" }
+        if canAddFrontmostBlockedApp { return "" }
         return "Frontmost app has no bundle identifier."
     }
 
@@ -261,30 +293,30 @@ final class IlluminationViewModel: ObservableObject {
         return "Unavailable"
     }
 
-    func addFrontmostHDRApp() {
+    func addFrontmostBlockedApp() {
         let info = HDRAppList.frontmostAppInfo()
         guard let bundleID = info.bundleID else { return }
-        HDRAppList.addOrEnable(bundleID: bundleID, displayName: info.displayName)
+        HDRAppList.addDenylistedApp(bundleID: bundleID, displayName: info.displayName)
         objectWillChange.send()
     }
 
-    func setHDRAppEnabled(bundleID: String, enabled: Bool) {
-        HDRAppList.setEnabled(bundleID: bundleID, isEnabled: enabled)
+    func setBlockedAppEnabled(bundleID: String, enabled: Bool) {
+        HDRAppList.setDenylistedEnabled(bundleID: bundleID, isEnabled: enabled)
         objectWillChange.send()
     }
 
-    func removeHDRApp(bundleID: String) {
-        HDRAppList.removeUserEntry(bundleID: bundleID)
+    func removeBlockedApp(bundleID: String) {
+        HDRAppList.removeDenylistedApp(bundleID: bundleID)
         objectWillChange.send()
     }
 
-    func resetHDRAppDefaults() {
-        HDRAppList.resetDefaults(keepUserAdded: true)
+    func resetBlockedAppDefaults() {
+        HDRAppList.resetDenylistDefaults(keepUserAdded: true)
         objectWillChange.send()
     }
 
-    func addHDRApp(bundleID: String, displayName: String?) {
-        HDRAppList.addOrEnable(bundleID: bundleID, displayName: displayName)
+    func addBlockedApp(bundleID: String, displayName: String?) {
+        HDRAppList.addDenylistedApp(bundleID: bundleID, displayName: displayName)
         objectWillChange.send()
     }
 

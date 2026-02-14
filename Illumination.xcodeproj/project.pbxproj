@@ -22,6 +22,7 @@
 		723564C72AC8C72E614A8061 /* HDRTile.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 49E679BF0F06968528066BEC /* HDRTile.mp4 */; };
 		7B7F9B2C526335411343E886 /* HDRAppList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8267E5395D52C35C2EF0B1F2 /* HDRAppList.swift */; };
 		9CF94A427570BA9F8DAA3572 /* IlluminationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C5B4AB118C68AC72B50BCD4 /* IlluminationUITests.swift */; };
+		A23B2E6909D654728F3923B4 /* AppPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362FDEB4CBD3D85604CAF5B8 /* AppPolicy.swift */; };
 		A80CCD213EDC318906FB4CAF /* RuntimeDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97B220D70B5EA395C4708F1 /* RuntimeDiagnostics.swift */; };
 		ABB01C1BF8967F238883C4E6 /* Overlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D897A2CA1E637C998F7328B3 /* Overlay.swift */; };
 		B03645D077FF7712156506E2 /* AdvancedOptionsMenus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C41DF8C81AD0D73AF82A8F /* AdvancedOptionsMenus.swift */; };
@@ -59,6 +60,7 @@
 		1D74E2B2ED87221EF7CAB1B3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2226CFD2B0B73C68FCC225AC /* TilePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TilePanel.swift; sourceTree = "<group>"; };
 		2F1787B8A6BD8098C2B9198E /* AppDetectionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDetectionViews.swift; sourceTree = "<group>"; };
+		362FDEB4CBD3D85604CAF5B8 /* AppPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPolicy.swift; sourceTree = "<group>"; };
 		4320C584B2087058CD0FD62F /* OverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindow.swift; sourceTree = "<group>"; };
 		49E679BF0F06968528066BEC /* HDRTile.mp4 */ = {isa = PBXFileReference; path = HDRTile.mp4; sourceTree = "<group>"; };
 		4BA9A734FD3BB5FCC4362B2A /* SystemInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemInfo.swift; sourceTree = "<group>"; };
@@ -92,6 +94,7 @@
 				9A3FEAD7A9BCC7EE36D49C10 /* ALSComputation.swift */,
 				F8FABC729ADCF702FE9C45D5 /* ALSManager.swift */,
 				2F1787B8A6BD8098C2B9198E /* AppDetectionViews.swift */,
+				362FDEB4CBD3D85604CAF5B8 /* AppPolicy.swift */,
 				1D74E2B2ED87221EF7CAB1B3 /* Assets.xcassets */,
 				620B31C8429296B8ABB8326E /* Brightness.swift */,
 				CAE4C7F9FDA51B1F1BB99350 /* DisplayStateProbe.swift */,
@@ -275,6 +278,7 @@
 				E64ADD19A4E4D1851B62CCE5 /* ALSManager.swift in Sources */,
 				B03645D077FF7712156506E2 /* AdvancedOptionsMenus.swift in Sources */,
 				09EAC31EDD83F8F8B4727EDB /* AppDetectionViews.swift in Sources */,
+				A23B2E6909D654728F3923B4 /* AppPolicy.swift in Sources */,
 				50960829434847E113C16B43 /* Brightness.swift in Sources */,
 				164BC914D3D1FF70456182D2 /* DisplayStateProbe.swift in Sources */,
 				7B7F9B2C526335411343E886 /* HDRAppList.swift in Sources */,

@@ -525,7 +525,7 @@ final class ALSManager {
 
         // Master gating with hysteresis + grace
         if Date() < graceUntil { return }
-        let canEnable = !(edrDisabledAt.map { Date().timeIntervalSince($0) < minOffSecondsGuard } ?? false)
+        let canEnable = !(edrDisabledAt.map { Date().timeIntervalSince($0) < minOffSecondsGuard } ?? false) && !bc.isDenylistBlocked()
         let canDisable = !(edrEnabledAt.map { Date().timeIntervalSince($0) < minOnSecondsGuard } ?? false)
         let gate = ALSComputation.nextAutoGateState(
             lux: lux,

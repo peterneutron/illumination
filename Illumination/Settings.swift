@@ -35,6 +35,7 @@ enum Settings {
         case alsCalibAnchorA = "illumination.als.calib.anchorA"
         case alsCalibAnchorB = "illumination.als.calib.anchorB"
         case hdrAppRegistry = "illumination.hdraware.app.registry"
+        case appPolicyScope = "illumination.app.scope"
     }
 
     private static var store: UserDefaults = .standard
@@ -193,5 +194,10 @@ enum Settings {
     static var hdrAppRegistryData: Data? {
         get { data(for: .hdrAppRegistry) }
         set { set(newValue, for: .hdrAppRegistry) }
+    }
+
+    static var appPolicyScope: Int {
+        get { clamp(int(.appPolicyScope, default: 1), min: 0, max: 1) }
+        set { store.set(clamp(newValue, min: 0, max: 1), forKey: Key.appPolicyScope.rawValue) }
     }
 }

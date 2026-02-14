@@ -25,11 +25,13 @@ struct IlluminationTests {
         Settings.overlayFPS = 1000
         Settings.hdrThreshold = 99
         Settings.tileSize = -10
+        Settings.appPolicyScope = 99
 
         #expect(Settings.entryMinPercent == 10.0)
         #expect(Settings.overlayFPS == 120)
         #expect(Settings.hdrThreshold == 3.0)
         #expect(Settings.tileSize == 1)
+        #expect(Settings.appPolicyScope == 1)
     }
 
     @Test("Corrupt calibrator data falls back safely")
@@ -104,8 +106,8 @@ struct IlluminationTests {
         #expect(floorBound == 1.0)
     }
 
-    @Test("HDR app registry seeds once and remains stable")
-    func hdrAppRegistrySeedAndStability() {
+    @Test("Blocked app registry seeds once and remains stable")
+    func blockedAppRegistrySeedAndStability() {
         let suiteName = "IlluminationTests.HDRAppSeed"
         guard let suite = UserDefaults(suiteName: suiteName) else {
             #expect(Bool(false))
@@ -118,15 +120,15 @@ struct IlluminationTests {
             suite.removePersistentDomain(forName: suiteName)
         }
 
-        let first = HDRAppList.allEntries()
-        let second = HDRAppList.allEntries()
+        let first = HDRAppList.allDenylistedEntries()
+        let second = HDRAppList.allDenylistedEntries()
         #expect(first.count == second.count)
         #expect(first.count >= 6)
         #expect(Set(first.map(\.bundleID)).count == first.count)
     }
 
-    @Test("HDR app matching normalizes and respects enabled/removed states")
-    func hdrAppMatchingNormalizationAndState() {
+    @Test("Blocked app matching normalizes and respects enabled/removed states")
+    func blockedAppMatchingNormalizationAndState() {
         let suiteName = "IlluminationTests.HDRAppMatch"
         guard let suite = UserDefaults(suiteName: suiteName) else {
             #expect(Bool(false))
@@ -139,19 +141,19 @@ struct IlluminationTests {
             suite.removePersistentDomain(forName: suiteName)
         }
 
-        HDRAppList.addOrEnable(bundleID: "COM.TEST.HDRAPP", displayName: "Test HDR App")
-        #expect(HDRAppList.isBundleIDEnabled("com.test.hdrapp"))
-        #expect(HDRAppList.isBundleIDEnabled("COM.TEST.HDRAPP"))
+        HDRAppList.addDenylistedApp(bundleID: "COM.TEST.HDRAPP", displayName: "Test HDR App")
+        #expect(HDRAppList.isBundleIDDenylisted("com.test.hdrapp"))
+        #expect(HDRAppList.isBundleIDDenylisted("COM.TEST.HDRAPP"))
 
-        HDRAppList.setEnabled(bundleID: "com.test.hdrapp", isEnabled: false)
-        #expect(HDRAppList.isBundleIDEnabled("com.test.hdrapp") == false)
+        HDRAppList.setDenylistedEnabled(bundleID: "com.test.hdrapp", isEnabled: false)
+        #expect(HDRAppList.isBundleIDDenylisted("com.test.hdrapp") == false)
 
-        HDRAppList.removeUserEntry(bundleID: "com.test.hdrapp")
-        #expect(HDRAppList.isBundleIDEnabled("com.test.hdrapp") == false)
+        HDRAppList.removeDenylistedApp(bundleID: "com.test.hdrapp")
+        #expect(HDRAppList.isBundleIDDenylisted("com.test.hdrapp") == false)
     }
 
-    @Test("Corrupt HDR app registry payload falls back safely")
-    func hdrAppRegistryCorruptFallback() {
+    @Test("Corrupt blocked app registry payload falls back safely")
+    func blockedAppRegistryCorruptFallback() {
         let suiteName = "IlluminationTests.HDRAppCorrupt"
         guard let suite = UserDefaults(suiteName: suiteName) else {
             #expect(Bool(false))
@@ -165,9 +167,9 @@ struct IlluminationTests {
         }
 
         Settings.hdrAppRegistryData = Data([0x01, 0x02, 0x03])
-        let entries = HDRAppList.allEntries()
+        let entries = HDRAppList.allDenylistedEntries()
         #expect(entries.count >= 6)
-        #expect(HDRAppList.isBundleIDEnabled("com.apple.photos"))
+        #expect(HDRAppList.isBundleIDDenylisted("com.apple.photos"))
     }
 
     @Test("HDR detection gate semantics are deterministic")
@@ -193,8 +195,8 @@ struct IlluminationTests {
         #expect(autoAllowed.gate == "Auto allowed")
     }
 
-    @Test("Adding duplicate HDR app is idempotent")
-    func hdrAppDuplicateAddIdempotent() {
+    @Test("Adding duplicate blocked app is idempotent")
+    func blockedAppDuplicateAddIdempotent() {
         let suiteName = "IlluminationTests.HDRAppIdempotent"
         guard let suite = UserDefaults(suiteName: suiteName) else {
             #expect(Bool(false))
@@ -207,11 +209,26 @@ struct IlluminationTests {
             suite.removePersistentDomain(forName: suiteName)
         }
 
-        HDRAppList.addOrEnable(bundleID: "com.test.idempotent", displayName: "Idempotent")
-        HDRAppList.addOrEnable(bundleID: "COM.TEST.IDEMPOTENT", displayName: "Idempotent")
-        let entries = HDRAppList.allEntries().filter { $0.bundleID.lowercased() == "com.test.idempotent" }
+        HDRAppList.addDenylistedApp(bundleID: "com.test.idempotent", displayName: "Idempotent")
+        HDRAppList.addDenylistedApp(bundleID: "COM.TEST.IDEMPOTENT", displayName: "Idempotent")
+        let entries = HDRAppList.allDenylistedEntries().filter { $0.bundleID.lowercased() == "com.test.idempotent" }
         #expect(entries.count == 1)
         #expect(entries.first?.isEnabled == true)
+    }
+
+    @Test("App policy scope semantics are deterministic")
+    func appPolicyScopeSemantics() {
+        let appsBlocked = AppPolicy.decide(scope: .apps, frontmostDenylisted: true)
+        #expect(appsBlocked.isBlocked)
+        #expect(appsBlocked.result == "blocked")
+
+        let appsAllowed = AppPolicy.decide(scope: .apps, frontmostDenylisted: false)
+        #expect(appsAllowed.isBlocked == false)
+        #expect(appsAllowed.result == "allowed")
+
+        let everywhereAllowed = AppPolicy.decide(scope: .everywhere, frontmostDenylisted: true)
+        #expect(everywhereAllowed.isBlocked == false)
+        #expect(everywhereAllowed.result == "allowed")
     }
 
     @Test("ALS decode handles malformed and sentinel inputs")

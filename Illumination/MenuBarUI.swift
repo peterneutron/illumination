@@ -72,8 +72,8 @@ struct IlluminationMenuView: View {
                         Text(tileModeDisplay(vm: vm))
                     }
                     HStack(spacing: 4) {
-                        Image(systemName: "sparkles.tv.fill")
-                        Text(hdrModeDisplay(vm: vm))
+                        Image(systemName: "app.connected.to.app.below.fill")
+                        Text(scopeDisplay(vm: vm))
                     }
                     HStack(spacing: 4) {
                         Image(systemName: "lightspectrum.horizontal")
@@ -172,16 +172,14 @@ struct IlluminationMenuView: View {
         }
     }
 
-    private func modeName(_ mode: Int) -> String { BrightnessController.modeName(mode) }
-
     private func tileModeDisplay(vm: IlluminationViewModel) -> String {
         guard (vm.enabled || vm.alsAutoEnabled) else { return "Off" }
         return vm.tileEnabled ? (vm.tileFullOpacity ? "Full" : "Low") : "Off"
     }
 
-    private func hdrModeDisplay(vm: IlluminationViewModel) -> String {
+    private func scopeDisplay(vm: IlluminationViewModel) -> String {
         guard (vm.enabled || vm.alsAutoEnabled) else { return "Off" }
-        return modeName(vm.hdrMode)
+        return vm.appPolicyScopeName
     }
 
     // luxDisplay removed; using LiveLuxLabel instead
@@ -262,14 +260,14 @@ private struct QuickActionsBar: View {
         )
     }
 
-    private var hdrMode: Binding<Int> {
-        Binding<Int>(get: { vm.hdrMode }, set: { vm.setHDRMode($0) })
+    private var appScope: Binding<Int> {
+        Binding<Int>(get: { vm.appScope }, set: { vm.setAppScope($0) })
     }
 
     var body: some View {
         HStack(spacing: 0) {
             Spacer(minLength: 0)
-            // Master enable/disable (disabled while ALS Auto is on; visually off under ALS)
+            // Master enable/disable
             MultiStateActionButton<Bool>(
                 title: "Master",
                 states: [
@@ -277,7 +275,7 @@ private struct QuickActionsBar: View {
                     ActionState(value: true,  imageName: "sun.max.fill", tint: .green, help: "Enable Illumination")
                 ],
                 selection: Binding(
-                    get: { vm.alsAutoEnabled ? false : vm.enabled },
+                    get: { vm.enabled },
                     set: { vm.setEnabledFromUser($0) }
                 ),
                 size: 48,
@@ -285,8 +283,6 @@ private struct QuickActionsBar: View {
                 showsCaption: false,
                 isActiveProvider: { $0 }
             )
-            .disabled(vm.alsAutoEnabled)
-            .opacity(vm.alsAutoEnabled ? 0.5 : 1.0)
             Spacer(minLength: 0)
 
             // Tile modes: Off / Low / Full
@@ -308,31 +304,31 @@ private struct QuickActionsBar: View {
             .help(vm.tileAvailable ? "Toggle HDR Tile" : "HDR asset not found")
             Spacer(minLength: 0)
 
-            // HDR Detection: Off / Apps (Auto moved to Debug, On removed)
+            // Scope: Everywhere / Apps
             MultiStateActionButton<Int>(
-                title: "Detection",
+                title: "Scope",
                 states: [
-                    ActionState(value: 0, imageName: "sparkles.tv",      tint: .gray,   help: "Detection Off"),
-                    ActionState(value: 3, imageName: "sparkles.tv.fill", tint: .blue,   help: "Detection Apps")
+                    ActionState(value: 0, imageName: "globe",                   tint: .gray,  help: "Everywhere"),
+                    ActionState(value: 1, imageName: "app.connected.to.app.below.fill", tint: .blue,  help: "Apps")
                 ],
-                selection: hdrMode,
+                selection: appScope,
                 size: 48,
                 enableHaptics: true,
                 showsCaption: false,
-                isActiveProvider: { $0 != 0 }
+                isActiveProvider: { $0 == 1 }
             )
             .disabled(!(vm.enabled || vm.alsAutoEnabled))
             .opacity((vm.enabled || vm.alsAutoEnabled) ? 1.0 : 0.5)
             Spacer(minLength: 0)
 
-            // ALS Auto: Off / On
+            // Mode: Manual / Auto
             MultiStateActionButton<Bool>(
-                title: "ALS Auto",
+                title: "Mode",
                 states: [
-                    ActionState(value: false, imageName: "lightspectrum.horizontal", tint: .gray,  help: "ALS Auto Off"),
-                    ActionState(value: true,  imageName: "lightspectrum.horizontal", tint: .green, help: "ALS Auto On")
+                    ActionState(value: false, imageName: "slider.horizontal.3",       tint: .gray,  help: "Manual"),
+                    ActionState(value: true,  imageName: "lightspectrum.horizontal",   tint: .green, help: "Auto")
                 ],
-                selection: Binding(get: { vm.alsAutoEnabled }, set: { vm.setALSMode($0) }),
+                selection: Binding(get: { vm.modeIsAuto }, set: { vm.setModeIsAuto($0) }),
                 size: 48,
                 enableHaptics: true,
                 showsCaption: false,

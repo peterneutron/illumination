@@ -31,18 +31,18 @@ enum HDRAppList {
         return (app?.bundleIdentifier, app?.localizedName)
     }
 
-    static func isFrontmostHDRApp() -> Bool {
-        isBundleIDEnabled(frontmostAppInfo().bundleID)
+    static func isFrontmostDenylistedApp() -> Bool {
+        isBundleIDDenylisted(frontmostAppInfo().bundleID)
     }
 
-    static func isBundleIDEnabled(_ bundleID: String?) -> Bool {
+    static func isBundleIDDenylisted(_ bundleID: String?) -> Bool {
         guard let bundleID = normalized(bundleID), !bundleID.isEmpty else { return false }
         return loadRegistry().entries.contains { entry in
             entry.isEnabled && entry.normalizedBundleID == bundleID
         }
     }
 
-    static func allEntries() -> [HDRAppEntry] {
+    static func allDenylistedEntries() -> [HDRAppEntry] {
         loadRegistry().entries.sorted { lhs, rhs in
             if lhs.isDefault != rhs.isDefault { return lhs.isDefault && !rhs.isDefault }
             let lhsName = (lhs.displayName ?? lhs.bundleID).localizedLowercase
@@ -51,7 +51,7 @@ enum HDRAppList {
         }
     }
 
-    static func addOrEnable(bundleID: String, displayName: String?) {
+    static func addDenylistedApp(bundleID: String, displayName: String?) {
         guard let normalizedID = normalized(bundleID), !normalizedID.isEmpty else { return }
         var registry = loadRegistry()
         if let index = registry.entries.firstIndex(where: { $0.normalizedBundleID == normalizedID }) {
@@ -78,7 +78,7 @@ enum HDRAppList {
         saveRegistry(registry)
     }
 
-    static func setEnabled(bundleID: String, isEnabled: Bool) {
+    static func setDenylistedEnabled(bundleID: String, isEnabled: Bool) {
         guard let normalizedID = normalized(bundleID), !normalizedID.isEmpty else { return }
         var registry = loadRegistry()
         guard let index = registry.entries.firstIndex(where: { $0.normalizedBundleID == normalizedID }) else { return }
@@ -86,7 +86,7 @@ enum HDRAppList {
         saveRegistry(registry)
     }
 
-    static func removeUserEntry(bundleID: String) {
+    static func removeDenylistedApp(bundleID: String) {
         guard let normalizedID = normalized(bundleID), !normalizedID.isEmpty else { return }
         var registry = loadRegistry()
         registry.entries.removeAll { entry in
@@ -95,7 +95,7 @@ enum HDRAppList {
         saveRegistry(registry)
     }
 
-    static func resetDefaults(keepUserAdded: Bool = true) {
+    static func resetDenylistDefaults(keepUserAdded: Bool = true) {
         if keepUserAdded {
             let userEntries = loadRegistry().entries.filter { !$0.isDefault }
             saveRegistry(HDRAppRegistry(entries: mergeDefaults(into: userEntries)))
@@ -168,4 +168,15 @@ enum HDRAppList {
     private static func normalized(_ bundleID: String?) -> String? {
         bundleID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
+}
+
+// Backward-compatible wrappers used by existing tests and debug paths.
+extension HDRAppList {
+    static func isFrontmostHDRApp() -> Bool { isFrontmostDenylistedApp() }
+    static func isBundleIDEnabled(_ bundleID: String?) -> Bool { isBundleIDDenylisted(bundleID) }
+    static func allEntries() -> [HDRAppEntry] { allDenylistedEntries() }
+    static func addOrEnable(bundleID: String, displayName: String?) { addDenylistedApp(bundleID: bundleID, displayName: displayName) }
+    static func setEnabled(bundleID: String, isEnabled: Bool) { setDenylistedEnabled(bundleID: bundleID, isEnabled: isEnabled) }
+    static func removeUserEntry(bundleID: String) { removeDenylistedApp(bundleID: bundleID) }
+    static func resetDefaults(keepUserAdded: Bool = true) { resetDenylistDefaults(keepUserAdded: keepUserAdded) }
 }

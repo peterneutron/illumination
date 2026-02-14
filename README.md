@@ -22,7 +22,8 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
     The complete methodology is detailed in our [**technical paper**](assets/Algorithm.pdf).
 - Extended Dynamic Range (EDR): Go beyond the standard SDR brightness limits.
 - Ambient Light Sensing (ALS): Automatically toggles EDR and **scales headroom** based on ambient light. Profiles are tuned for **daylight** (e.g., shade → sun) with hysteresis to avoid cloud‑flicker: Twilight, Daybreak, Midday (default), Sunburst, High Noon.
-- HDR-Aware Ducking: A standout feature that automatically reduces the brightness boost when HDR content is detected. This preserves the creative intent of HDR media without requiring manual intervention. ⚠️ Partially working ⚠️
+- App Policy controls: `Master` (On/Off), `Mode` (Manual/Auto), `Scope` (Everywhere/Apps). In `Apps` scope, denylisted frontmost apps force Illumination off and previous state is restored when switching away.
+- HDR-Aware Ducking: automatically reduces boost during HDR-like content. Currently treated as **experimental/debug-oriented** in this phase.
 - Persistent HDR Tile: An optional, small video tile that can be placed in a corner of the screen to ensure EDR mode remains active, keeping EDR engaged within fullscreen applications/spaces.
 - Debug submenu with extended diagnostics and fine-grained control settings.
 
@@ -31,6 +32,7 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
 - EDR can draw significant power at high nits.
 - Built‑in displays only (for now).
 - ALS `xDark` is intentionally pinned to **0.0** in the current model. This is preserved for compatibility and should be revisited with explicit recalibration experiments.
+- `HDRRegionSampler` and HDR ducking remain experimental and primarily surfaced through Debug/Experimental controls.
 
 ## Getting Started: Building from Source
 
