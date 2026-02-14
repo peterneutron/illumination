@@ -123,6 +123,10 @@ final class ALSManager {
         if on == autoEnabled { return }
         autoEnabled = on
         Settings.alsAutoEnabled = on
+        if on {
+            // Explicit mode switch to Auto should take control immediately.
+            graceUntil = .distantPast
+        }
         guard on, let lux = currentLux, lux.isFinite else { return }
 
         // Prime dwell counters from current lux so manual -> auto transitions
@@ -384,13 +388,12 @@ final class ALSManager {
         let bc = BrightnessController.shared
         let state: AutoControlState = bc.appIsEnabled() ? .on : .off
         let targetPercent = computeTargetPercent(lux: lux)
-        let nextPercent = computeRampNext(targetPercent: targetPercent, state: state, controller: bc)
-
-        if let nextPercent {
-            bc.setUserPercent(nextPercent)
-        }
 
         if Date() < graceUntil {
+            let nextPercent = computeRampNext(targetPercent: targetPercent, state: state, controller: bc)
+            if let nextPercent {
+                bc.setUserPercent(nextPercent)
+            }
             traceStore.append(
                 ALSTraceEvent(
                     kind: .autoGateDecision,
@@ -414,6 +417,19 @@ final class ALSManager {
 
         aboveCount = gate.aboveCount
         belowCount = gate.belowCount
+
+        // Semantics: disable/enable actions take precedence over ramp clamping.
+        // This avoids transient floor writes (e.g. 1%) when OFF gating should fire.
+        let nextPercent: Double?
+        switch gate.action {
+        case .disable, .enable:
+            nextPercent = nil
+        case .none:
+            nextPercent = computeRampNext(targetPercent: targetPercent, state: state, controller: bc)
+            if let nextPercent {
+                bc.setUserPercent(nextPercent)
+            }
+        }
 
         let actionLabel = actionString(gate.action)
         traceStore.append(
