@@ -3,6 +3,12 @@ import SwiftUI
 import Combine
 import AppKit
 
+enum MasterControlState: Equatable {
+    case off
+    case manual
+    case auto
+}
+
 @MainActor
 final class IlluminationViewModel: ObservableObject {
     @Published var enabled: Bool
@@ -86,6 +92,21 @@ final class IlluminationViewModel: ObservableObject {
 
     var modeIsAuto: Bool { alsAutoEnabled }
     func setModeIsAuto(_ on: Bool) { setALSMode(on) }
+    var masterControlState: MasterControlState {
+        IlluminationViewModel.resolveMasterControlState(masterEnabled: enabled, autoEnabled: alsAutoEnabled)
+    }
+    func setMasterControlState(_ state: MasterControlState) {
+        switch state {
+        case .off:
+            setALSMode(false, ensureMasterOn: false)
+            setEnabledFromUser(false)
+        case .manual:
+            setALSMode(false, ensureMasterOn: false)
+            setEnabledFromUser(true)
+        case .auto:
+            setALSMode(true)
+        }
+    }
 
     var appScope: Int { controller.appPolicyScopeValue() }
     func setAppScope(_ scope: Int) {
@@ -396,6 +417,13 @@ final class IlluminationViewModel: ObservableObject {
         return installedApps.filter { app in
             app.displayName.lowercased().contains(query) || app.bundleID.lowercased().contains(query)
         }
+    }
+}
+
+extension IlluminationViewModel {
+    nonisolated static func resolveMasterControlState(masterEnabled: Bool, autoEnabled: Bool) -> MasterControlState {
+        if autoEnabled { return .auto }
+        return masterEnabled ? .manual : .off
     }
 }
 

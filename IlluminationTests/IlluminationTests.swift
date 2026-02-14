@@ -135,6 +135,15 @@ struct IlluminationTests {
         #expect(floorBound == 1.0)
     }
 
+    @Test("Master control state resolver preserves auto intent precedence")
+    func masterControlStateResolver() {
+        #expect(IlluminationViewModel.resolveMasterControlState(masterEnabled: false, autoEnabled: false) == .off)
+        #expect(IlluminationViewModel.resolveMasterControlState(masterEnabled: true, autoEnabled: false) == .manual)
+        #expect(IlluminationViewModel.resolveMasterControlState(masterEnabled: true, autoEnabled: true) == .auto)
+        // Keep auto visible as intent even if master is forced off by policy.
+        #expect(IlluminationViewModel.resolveMasterControlState(masterEnabled: false, autoEnabled: true) == .auto)
+    }
+
     @Test("Blocked app registry seeds once and remains stable")
     func blockedAppRegistrySeedAndStability() {
         let suiteName = "IlluminationTests.HDRAppSeed"

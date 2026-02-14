@@ -238,6 +238,13 @@ private enum TileMode: Equatable { case off, low, full }
 private struct QuickActionsBar: View {
     @ObservedObject var vm: IlluminationViewModel
 
+    private var masterControlState: Binding<MasterControlState> {
+        Binding<MasterControlState>(
+            get: { vm.masterControlState },
+            set: { vm.setMasterControlState($0) }
+        )
+    }
+
     private var tileMode: Binding<TileMode> {
         Binding<TileMode>(
             get: {
@@ -266,21 +273,19 @@ private struct QuickActionsBar: View {
     var body: some View {
         HStack(spacing: 0) {
             Spacer(minLength: 0)
-            // Master enable/disable
-            MultiStateActionButton<Bool>(
+            // Master state: Off / Manual / Auto
+            MultiStateActionButton<MasterControlState>(
                 title: "Master",
                 states: [
-                    ActionState(value: false, imageName: "sun.min",      tint: .red,   help: "Disable Illumination"),
-                    ActionState(value: true,  imageName: "sun.max.fill", tint: .green, help: "Enable Illumination")
+                    ActionState(value: .off, imageName: "sun.min", tint: .red, help: "Off"),
+                    ActionState(value: .manual, imageName: "sun.max.fill", tint: .yellow, help: "Manual"),
+                    ActionState(value: .auto, imageName: "lightspectrum.horizontal", tint: .green, help: "Auto")
                 ],
-                selection: Binding(
-                    get: { vm.enabled },
-                    set: { vm.setEnabledFromUser($0) }
-                ),
+                selection: masterControlState,
                 size: 48,
                 enableHaptics: true,
                 showsCaption: false,
-                isActiveProvider: { $0 }
+                isActiveProvider: { $0 != .off }
             )
             Spacer(minLength: 0)
 
@@ -318,23 +323,6 @@ private struct QuickActionsBar: View {
             )
             .disabled(!(vm.enabled || vm.alsAutoEnabled))
             .opacity((vm.enabled || vm.alsAutoEnabled) ? 1.0 : 0.5)
-            Spacer(minLength: 0)
-
-            // Mode: Manual / Auto
-            MultiStateActionButton<Bool>(
-                title: "Mode",
-                states: [
-                    ActionState(value: false, imageName: "slider.horizontal.3",       tint: .gray,  help: "Manual"),
-                    ActionState(value: true,  imageName: "lightspectrum.horizontal",   tint: .green, help: "Auto")
-                ],
-                selection: Binding(get: { vm.modeIsAuto }, set: { vm.setModeIsAuto($0) }),
-                size: 48,
-                enableHaptics: true,
-                showsCaption: false,
-                isActiveProvider: { $0 }
-            )
-            .disabled(!vm.alsAvailable)
-            .opacity(vm.alsAvailable ? 1.0 : 0.5)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
