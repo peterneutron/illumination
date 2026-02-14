@@ -1,150 +1,20 @@
 import Foundation
-import IOKit
 import AppKit
-
-// MARK: - ALS Auto Profiles
-enum ALSProfile: String, CaseIterable {
-    case twilight      // formerly: earliest
-    case daybreak      // formerly: earlier
-    case midday        // formerly: aggressive
-    case sunburst      // formerly: normal
-    case highNoon      // formerly: conservative
-
-    var displayName: String {
-        switch self {
-        case .twilight: return "Twilight"
-        case .daybreak: return "Daybreak"
-        case .midday: return "Midday"
-        case .sunburst: return "Sunburst"
-        case .highNoon: return "High Noon"
-        }
-    }
-}
-
-// Legacy raw-value migration helper
-private func migrateALSProfileRaw(_ raw: String) -> ALSProfile? {
-    if let p = ALSProfile(rawValue: raw) { return p }
-    switch raw {
-    case "earliest": return .twilight
-    case "earlier": return .daybreak
-    case "aggressive": return .midday
-    case "normal": return .sunburst
-    case "conservative": return .highNoon
-    default: return nil
-    }
-}
-
-// MARK: - Internal sample representation
-private enum ALSSample {
-    case value(Double)   // decoded sensor counts (fixed-point X-space)
-    case saturated       // driver returned a sentinel / overflow
-    case invalid         // missing/garbage
-}
-
-// MARK: - Lux Calibrator (maps decoded counts → estimated lux)
-struct LuxCalibrator: Codable {
-    // Seeded from user-provided measurements: sun anchor + LED steps @ 20cm
-    var a: Double = 20.701263635343665
-    var p: Double = 1.13652988767883
-    // Covered/baseline decoded value (raw 118,000 / 2^20).
-    // NOTE: xDark is intentionally pinned to 0.0 in the current model.
-    // The exact historical rationale is unclear; preserve behavior and revisit later.
-    var xDark: Double = 0.0
-
-    func estimateLux(decodedX: Double) -> Double {
-        let dx = max(0.0, decodedX - xDark)
-        return a * pow(dx, p)
-    }
-
-    // Simple persistence
-    static func load() -> LuxCalibrator {
-        if let data = Settings.alsCalibratorData,
-           let c = try? JSONDecoder().decode(LuxCalibrator.self, from: data) {
-            return c
-        }
-        return LuxCalibrator()
-    }
-    static func exists() -> Bool {
-        return Settings.alsCalibratorData != nil
-    }
-    func save() {
-        if let data = try? JSONEncoder().encode(self) {
-            Settings.alsCalibratorData = data
-        }
-    }
-}
-
-// Convenience for UI line
-extension ALSManager {
-    func calibratorLine() -> String {
-        let cp = calibratorParams()
-        return String(format: "Calibrator: a=%.5f, p=%.5f, xDark=%.5f", cp.a, cp.p, cp.xDark)
-    }
-}
-
-// Fixed-point/sentinel constants are implemented in ALSComputation.decodeAmbientBrightnessSample.
-private let kMaxDecodedX: Double = 2047.0 // used for saturation surrogate bounds
-
-// MARK: - Final model: calibrated power law with xDark=0 and day-max relative blend
-
-// Decode helper for the undocumented IOReg key (fixed-point → decoded counts in X-space)
-private func decodeAmbientBrightness(_ prop: Any) -> ALSSample {
-    let decoded = ALSComputation.decodeAmbientBrightnessSample(raw: prop)
-    switch decoded.kind {
-    case "value":
-        if let value = decoded.value { return .value(value) }
-        return .invalid
-    case "saturated":
-        return .saturated
-    default:
-        return .invalid
-    }
-}
-
-// MARK: - Ambient Light Reader (IORegistry)
-final class AmbientLightReader {
-    private static let requiredPathSuffix = "/disp0@7C000000/IOMobileFramebufferShim"
-    private static let keyName = "AmbientBrightness"
-
-    private var entry: io_registry_entry_t = 0
-
-    // Deprecated legacy scan initializer removed; construct via DisplayStateProbe.makeALSReader()
-    private init?() { return nil }
-
-    deinit { if entry != 0 { IOObjectRelease(entry) } }
-
-    fileprivate func readSample() -> ALSSample {
-        guard entry != 0 else { return .invalid }
-        guard let prop = IORegistryEntryCreateCFProperty(entry, Self.keyName as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
-            return .invalid
-        }
-        return decodeAmbientBrightness(prop)
-    }
-
-    // Bind to a provided IORegistry entry (retains it); validate key presence
-    init?(entry: io_registry_entry_t) {
-        guard entry != 0 else { return nil }
-        // Validate the key exists
-        if IORegistryEntryCreateCFProperty(entry, Self.keyName as CFString, kCFAllocatorDefault, 0) == nil {
-            return nil
-        }
-        self.entry = entry
-        IOObjectRetain(self.entry)
-    }
-}
 
 // MARK: - ALS Manager + Auto Control
 final class ALSManager {
     static let shared = ALSManager()
+
+    private enum AutoControlState {
+        case off
+        case on
+    }
 
     // Published-like values (main-thread observed by view models/UI)
     private(set) var currentLux: Double? = nil
     private(set) var available: Bool = false
     private(set) var sampleHz: Double = 2.0 { didSet { sampleHz = max(0.5, min(60.0, sampleHz)) } }
 
-    // Removed legacy calibration/gamma scalars
-
-    // Smoothing state
     private var lpState: Double? = nil
 
     // Calibrator: decoded counts → estimated lux
@@ -154,7 +24,6 @@ final class ALSManager {
     private var reader: AmbientLightReader?
     private var timer: DispatchSourceTimer?
 
-    // Watchdog
     private var invalidStreak = 0
     private var saturatedStreak = 0
 
@@ -162,20 +31,16 @@ final class ALSManager {
     private var rollingMaxDx: Double = 0
     private var lastDxDecay = Date()
     private var hasSunAnchor: Bool = false
-    // Fixed internal blend parameters (previously tunable)
     private let sunDxTriggerConst: Double = 1200.0
     private let relBlendMaxConst: Double = 0.25
     private var warmupUntil: Date = Date().addingTimeInterval(2.0)
 
-    // Stall-breaker state for saturation handling
     private var lastGoodX: Double = 0
     private var lastGoodAt: Date = .distantPast
 
-    // Saturation handling knobs
     private let saturationApplyAfter: TimeInterval = 0.5  // seconds of continuous saturation before synthesizing
     private let saturationBoost: Double = 1.15             // push above last good to reflect “very bright”
     private let saturationFloorDx: Double = 1200.0         // sensor-space floor (Δx counts) used when synthesizing in direct sun
-
 
     // Auto mode
     private var profile: ALSProfile = .sunburst
@@ -183,9 +48,6 @@ final class ALSManager {
     private var graceUntil: Date = .distantPast
     private var aboveCount = 0
     private var belowCount = 0
-    // Staged target percent while EDR is OFF (do not move the slider pre‑EDR)
-    private var pendingPercent: Double? = nil
-    // pre-EDR user percent tracking removed
 
     // EDR entry behavior
     private var edrEnabledAt: Date? = nil
@@ -203,7 +65,8 @@ final class ALSManager {
     private(set) var debugLrel: Double? = nil
     private(set) var debugBlendW: Double? = nil
     private(set) var debugRollingMaxDx: Double? = nil
-    // Removed: debug fields for alternate models
+    private let traceStore = ALSTraceStore(capacity: 1_000)
+    private var lastTraceExportJSONL: String = ""
 
     // Thresholds + dwell from profile (brightness/enable policy; keep your semantics)
     private var onLux: Double {
@@ -358,6 +221,26 @@ final class ALSManager {
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            self.traceStore.append(
+                ALSTraceEvent(
+                    kind: .sampleValue,
+                    decodedX: xSmoothed,
+                    dx: dx,
+                    reason: "value_sample"
+                )
+            )
+            self.traceStore.append(
+                ALSTraceEvent(
+                    kind: .blendComputed,
+                    decodedX: xSmoothed,
+                    dx: dx,
+                    fitLux: fitLux,
+                    relLux: relLux,
+                    blendW: blendWeight,
+                    finalLux: finalLux,
+                    profile: self.profile.rawValue
+                )
+            )
             self.currentLux = finalLux
             self.debugDecodedX = xSmoothed
             self.debugDx = dx
@@ -371,6 +254,12 @@ final class ALSManager {
 
     private func handleSaturatedSample(now: Date, dt: Double, tauBase: Double, multBase: Double) {
         saturatedStreak += 1
+        traceStore.append(
+            ALSTraceEvent(
+                kind: .sampleSaturated,
+                reason: "saturated_streak=\(saturatedStreak)"
+            )
+        )
         if now.timeIntervalSince(lastGoodAt) >= saturationApplyAfter {
             hasSunAnchor = true
             let surrogateX = ALSComputation.surrogateSaturatedX(
@@ -403,6 +292,19 @@ final class ALSManager {
 
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                self.traceStore.append(
+                    ALSTraceEvent(
+                        kind: .blendComputed,
+                        decodedX: xSmoothed,
+                        dx: dxSm,
+                        fitLux: fitLux,
+                        relLux: relLux,
+                        blendW: blendWeight,
+                        finalLux: finalLux,
+                        profile: self.profile.rawValue,
+                        reason: "saturated_surrogate"
+                    )
+                )
                 self.currentLux = finalLux
                 self.debugDecodedX = xSmoothed
                 self.debugDx = dxSm
@@ -421,6 +323,12 @@ final class ALSManager {
 
     private func handleInvalidSample() {
         invalidStreak += 1
+        traceStore.append(
+            ALSTraceEvent(
+                kind: .sampleInvalid,
+                reason: "invalid_streak=\(invalidStreak)"
+            )
+        )
         if ALSComputation.shouldAttemptRebind(streak: invalidStreak, sampleHz: sampleHz) {
             attemptRebind()
         }
@@ -447,16 +355,17 @@ final class ALSManager {
         state = y
         return y
     }
-
-    // MARK: - Rebind watchdog
     private func attemptRebind() {
+        traceStore.append(ALSTraceEvent(kind: .rebindAttempt, reason: "attempt"))
         // Re-scan IORegistry if we appear stuck
         if let nr = DisplayStateProbe.shared.makeALSReader() {
             reader = nr
+            traceStore.append(ALSTraceEvent(kind: .rebindResult, reason: "success"))
             DispatchQueue.main.async { [weak self] in
                 self?.available = true
             }
         } else {
+            traceStore.append(ALSTraceEvent(kind: .rebindResult, reason: "failure"))
             DispatchQueue.main.async { [weak self] in
                 self?.available = false
             }
@@ -478,58 +387,115 @@ final class ALSManager {
     // MARK: - Auto control policy
     private func evaluateAuto(lux: Double) {
         guard autoEnabled else { return }
+        guard lux.isFinite else { return }
 
-        // Percent mapping (unchanged semantics)
-        let target = percent(forLux: lux)
         let bc = BrightnessController.shared
-        let isOn = bc.appIsEnabled()
+        let state: AutoControlState = bc.appIsEnabled() ? .on : .off
+        let targetPercent = computeTargetPercent(lux: lux)
+        let nextPercent = computeRampNext(targetPercent: targetPercent, state: state, controller: bc)
 
-        // Respect HDR Apps mode: if user selected Apps and an HDR-app is frontmost, pause ALS ramp
-        let hdrMode = bc.hdrRegionSamplerModeValue()
-        let inHDRApp = HDRAppList.isFrontmostHDRApp()
-        let shouldPauseRamp = (hdrMode == 3) && inHDRApp
-
-        if isOn {
-            // Only move the slider while EDR is actually ON
-            if !shouldPauseRamp {
-                let current = bc.currentUserPercent()
-                let step = inHDRApp && hdrMode == 3 ? max(0.10, rampStep * 0.6) : rampStep
-                // Entry envelope: cap allowed percent during first seconds after enable
-                var allowed = 100.0
-                if let t0 = edrEnabledAt {
-                    let elapsed = Date().timeIntervalSince(t0)
-                    let slope = (100.0 - entryMinPercent) / max(0.1, entryEnvelopeSeconds)
-                    allowed = min(100.0, entryMinPercent + slope * elapsed)
-                }
-                var desired = min(target, allowed)
-                // Maintain minimum while on
-                desired = max(entryMinPercent, desired)
-                // Ramp and slope-limit
-                let dt = 1.0 / max(0.001, sampleHz)
-                let next = ALSComputation.nextRampPercent(
-                    currentPercent: current,
-                    targetPercent: desired,
-                    entryMinPercent: entryMinPercent,
-                    maxPercentPerSecond: maxPercentPerSecond,
-                    dt: dt,
-                    step: step
-                )
-                bc.setUserPercent(next)
-            }
-            // Clear any staged target once we’re actively controlling
-            pendingPercent = nil
-        } else {
-            // Stage the desired percent; apply instantly upon enable
-            pendingPercent = target
+        if let nextPercent {
+            bc.setUserPercent(nextPercent)
         }
 
-        // Master gating with hysteresis + grace
-        if Date() < graceUntil { return }
-        let canEnable = !(edrDisabledAt.map { Date().timeIntervalSince($0) < minOffSecondsGuard } ?? false) && !bc.isDenylistBlocked()
+        if Date() < graceUntil {
+            traceStore.append(
+                ALSTraceEvent(
+                    kind: .autoGateDecision,
+                    finalLux: lux,
+                    isOn: state == .on,
+                    targetPercent: targetPercent,
+                    nextPercent: nextPercent,
+                    gateAction: "none",
+                    aboveCount: aboveCount,
+                    belowCount: belowCount,
+                    onLux: onLux,
+                    offLux: offLux,
+                    profile: profile.rawValue,
+                    reason: "manual_grace"
+                )
+            )
+            return
+        }
+
+        let gate = computeGateDecision(lux: lux, state: state, controller: bc)
+
+        aboveCount = gate.aboveCount
+        belowCount = gate.belowCount
+
+        let actionLabel = actionString(gate.action)
+        traceStore.append(
+            ALSTraceEvent(
+                kind: .autoGateDecision,
+                finalLux: lux,
+                isOn: state == .on,
+                targetPercent: targetPercent,
+                nextPercent: nextPercent,
+                gateAction: actionLabel,
+                aboveCount: aboveCount,
+                belowCount: belowCount,
+                onLux: onLux,
+                offLux: offLux,
+                profile: profile.rawValue
+            )
+        )
+
+        applyGateAction(gate.action, controller: bc)
+        assertInvariants(lux: lux)
+    }
+
+    private func computeTargetPercent(lux: Double) -> Double {
+        percent(forLux: lux)
+    }
+
+    private func computeRampNext(
+        targetPercent: Double,
+        state: AutoControlState,
+        controller: BrightnessController
+    ) -> Double? {
+        guard state == .on else { return nil }
+
+        let hdrMode = controller.hdrRegionSamplerModeValue()
+        let inHDRApp = HDRAppList.isFrontmostHDRApp()
+        let shouldPauseRamp = (hdrMode == 3) && inHDRApp
+        guard !shouldPauseRamp else { return nil }
+
+        let current = controller.currentUserPercent()
+        let step = inHDRApp && hdrMode == 3 ? max(0.10, rampStep * 0.6) : rampStep
+        let desired = boundedEntryTarget(targetPercent: targetPercent)
+        let dt = 1.0 / max(0.001, sampleHz)
+        return ALSComputation.nextRampPercent(
+            currentPercent: current,
+            targetPercent: desired,
+            entryMinPercent: entryMinPercent,
+            maxPercentPerSecond: maxPercentPerSecond,
+            dt: dt,
+            step: step
+        )
+    }
+
+    private func boundedEntryTarget(targetPercent: Double) -> Double {
+        var allowed = 100.0
+        if let t0 = edrEnabledAt {
+            let elapsed = Date().timeIntervalSince(t0)
+            let slope = (100.0 - entryMinPercent) / max(0.1, entryEnvelopeSeconds)
+            allowed = min(100.0, entryMinPercent + slope * elapsed)
+        }
+        let desired = min(targetPercent, allowed)
+        return max(entryMinPercent, desired)
+    }
+
+    private func computeGateDecision(
+        lux: Double,
+        state: AutoControlState,
+        controller: BrightnessController
+    ) -> ALSComputation.AutoGateResult {
+        let canEnable = !(edrDisabledAt.map { Date().timeIntervalSince($0) < minOffSecondsGuard } ?? false) &&
+            !controller.isDenylistBlocked()
         let canDisable = !(edrEnabledAt.map { Date().timeIntervalSince($0) < minOnSecondsGuard } ?? false)
-        let gate = ALSComputation.nextAutoGateState(
+        return ALSComputation.nextAutoGateState(
             lux: lux,
-            isOn: isOn,
+            isOn: state == .on,
             aboveCount: aboveCount,
             belowCount: belowCount,
             onLux: onLux,
@@ -540,30 +506,58 @@ final class ALSManager {
             canEnable: canEnable,
             canDisable: canDisable
         )
+    }
 
-        aboveCount = gate.aboveCount
-        belowCount = gate.belowCount
-
-        switch gate.action {
+    private func applyGateAction(_ action: ALSComputation.AutoGateAction, controller: BrightnessController) {
+        switch action {
         case .none:
-            break
+            return
         case .enable:
-            bc.setEnabled(true)
+            controller.setEnabled(true)
             edrEnabledAt = Date()
-            bc.setUserPercent(entryMinPercent)
+            controller.setUserPercent(entryMinPercent)
+            traceStore.append(
+                ALSTraceEvent(
+                    kind: .masterAction,
+                    isOn: true,
+                    nextPercent: entryMinPercent,
+                    gateAction: "enable",
+                    reason: "auto_gate_enable"
+                )
+            )
         case .disable:
-            bc.setEnabled(false)
+            controller.setEnabled(false)
             edrDisabledAt = Date()
             edrEnabledAt = nil
-            bc.setUserPercent(0.0)
+            controller.setUserPercent(0.0)
+            traceStore.append(
+                ALSTraceEvent(
+                    kind: .masterAction,
+                    isOn: false,
+                    nextPercent: 0.0,
+                    gateAction: "disable",
+                    reason: "auto_gate_disable"
+                )
+            )
         }
     }
 
-    /// Smooth onLux-relative mapping for lux → EDR percent.
-    /// - At L = onLux: ~entryMinPercent
-    /// - At L ≈ 3×onLux: ~50–70%
-    /// - At L ≈ 10×onLux: ~85–95%
-    /// - Approaches 100% asymptotically for extreme L
+    private func actionString(_ action: ALSComputation.AutoGateAction) -> String {
+        switch action {
+        case .none: return "none"
+        case .enable: return "enable"
+        case .disable: return "disable"
+        }
+    }
+
+    private func assertInvariants(lux: Double) {
+        assert(lux.isFinite, "ALS lux must be finite")
+        assert(aboveCount >= 0, "ALS aboveCount must be non-negative")
+        assert(belowCount >= 0, "ALS belowCount must be non-negative")
+        let percent = BrightnessController.shared.currentUserPercent()
+        assert(percent >= 0.0 && percent <= 100.0, "ALS user percent must stay bounded")
+    }
+
     private func percent(forLux lux: Double) -> Double {
         ALSComputation.percentForLux(lux: lux, onLux: onLux, entryMinPercent: entryMinPercent)
     }
@@ -592,6 +586,36 @@ final class ALSManager {
     func maxPercentPerSecondValue() -> Double { maxPercentPerSecond }
     func minOnSecondsValue() -> Double { minOnSecondsGuard }
     func minOffSecondsValue() -> Double { minOffSecondsGuard }
+
+    // MARK: - ALS trace controls (Debug)
+    func setTraceCaptureEnabled(_ enabled: Bool) {
+        traceStore.setCaptureEnabled(enabled)
+    }
+
+    func traceCaptureEnabled() -> Bool {
+        traceStore.isCaptureEnabled()
+    }
+
+    func traceEventCount() -> Int {
+        traceStore.count()
+    }
+
+    func clearTrace() {
+        traceStore.clear()
+        lastTraceExportJSONL = ""
+    }
+
+    func exportTraceJSONL() -> String {
+        let jsonl = traceStore.exportJSONL()
+        if !jsonl.isEmpty {
+            lastTraceExportJSONL = jsonl
+        }
+        return jsonl
+    }
+
+    func replayLastTraceSummary() -> String {
+        ALSReplay.replayLastExportSummary(jsonl: lastTraceExportJSONL)
+    }
 
     // MARK: - Calibration helper
     struct CalibAnchor: Codable { let dx: Double; let lux: Double }

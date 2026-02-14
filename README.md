@@ -26,6 +26,7 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
 - HDR-Aware Ducking: automatically reduces boost during HDR-like content. Currently treated as **experimental/debug-oriented** in this phase.
 - Persistent HDR Tile: An optional, small video tile that can be placed in a corner of the screen to ensure EDR mode remains active, keeping EDR engaged within fullscreen applications/spaces.
 - Debug submenu with extended diagnostics and fine-grained control settings.
+- Debug ALS trace tooling: in-memory ring buffer capture, JSONL export, clear, and replay summary for deterministic investigations.
 
 ### Known limits
 - Lux is capped at **120 000** to match observed ALS saturation.
@@ -33,6 +34,7 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
 - Built‑in displays only (for now).
 - ALS `xDark` is intentionally pinned to **0.0** in the current model. This is preserved for compatibility and should be revisited with explicit recalibration experiments.
 - `HDRRegionSampler` and HDR ducking remain experimental and primarily surfaced through Debug/Experimental controls.
+- ALS trace/replay controls are intentionally Debug-only in this phase.
 
 ## Getting Started: Building from Source
 

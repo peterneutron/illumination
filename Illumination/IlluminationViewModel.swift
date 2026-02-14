@@ -14,6 +14,7 @@ final class IlluminationViewModel: ObservableObject {
     @Published var appPickerQuery: String = ""
     @Published private(set) var installedApps: [InstalledHDRApp] = []
     @Published private(set) var appPickerLoading: Bool = false
+    @Published private(set) var alsTraceReplaySummary: String = "ALS replay: no trace events"
 
     private let controller = BrightnessController.shared
     private var timer: Timer?
@@ -171,6 +172,9 @@ final class IlluminationViewModel: ObservableObject {
         lines.append("App Policy Scope: \(policy.scope)")
         lines.append("App Policy Result: \(policy.result)")
         lines.append("App Policy Restore Pending: \(policy.restorePending ? "yes" : "no")")
+        lines.append("ALS Trace Capture: \(ALSManager.shared.traceCaptureEnabled() ? "on" : "off")")
+        lines.append("ALS Trace Events: \(ALSManager.shared.traceEventCount())")
+        lines.append(alsTraceReplaySummary)
 
         let detection = controller.hdrDetectionDiagnostics()
         lines.append("Experimental HDR Frontmost: \(detection.frontmostBundleID)")
@@ -237,6 +241,33 @@ final class IlluminationViewModel: ObservableObject {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(s, forType: .string)
+    }
+
+    func copyALSTraceJSONL() {
+        let trace = ALSManager.shared.exportTraceJSONL()
+        guard !trace.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(trace, forType: .string)
+        alsTraceReplaySummary = "ALS replay: export copied (\(ALSManager.shared.traceEventCount()) events)"
+        objectWillChange.send()
+    }
+
+    func clearALSTrace() {
+        ALSManager.shared.clearTrace()
+        alsTraceReplaySummary = "ALS replay: no trace events"
+        objectWillChange.send()
+    }
+
+    var alsTraceCaptureEnabled: Bool { ALSManager.shared.traceCaptureEnabled() }
+    func setALSTraceCaptureEnabled(_ enabled: Bool) {
+        ALSManager.shared.setTraceCaptureEnabled(enabled)
+        objectWillChange.send()
+    }
+
+    func replayLastALSTraceExport() {
+        alsTraceReplaySummary = ALSManager.shared.replayLastTraceSummary()
+        objectWillChange.send()
     }
 
     // MARK: - Lux label steps

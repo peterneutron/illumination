@@ -90,6 +90,20 @@ struct DebugMenu: View {
                 Button("Copy Diagnostics") { vm.copyDiagnosticsToPasteboard() }
             }
             Divider()
+            Menu("ALS Trace") {
+                Toggle(
+                    "Capture",
+                    isOn: Binding(
+                        get: { vm.alsTraceCaptureEnabled },
+                        set: { vm.setALSTraceCaptureEnabled($0) }
+                    )
+                )
+                Button("Copy JSONL") { vm.copyALSTraceJSONL() }
+                Button("Clear Buffer") { vm.clearALSTrace() }
+                Button("Replay Last Export") { vm.replayLastALSTraceExport() }
+                Text(vm.alsTraceReplaySummary).font(.caption).foregroundStyle(.secondary)
+            }
+            Divider()
             Menu("Display Probe") {
                 ForEach(DisplayStateProbe.shared.debugLines(), id: \.self) { line in Text(line) }
                 Divider()
