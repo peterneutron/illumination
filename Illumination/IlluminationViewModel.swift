@@ -16,6 +16,16 @@ final class IlluminationViewModel: ObservableObject {
     private var timer: Timer?
     private var pollingActive = false
 
+    private func syncFromController() {
+        enabled = controller.appIsEnabled()
+        userPercent = controller.currentUserPercent()
+        alsAvailable = ALSManager.shared.available
+        alsAutoEnabled = ALSManager.shared.autoEnabled
+        if controller.currentGammaCapDetails().sawEDR && edrUnsupportedConfirmed {
+            edrUnsupportedConfirmed = false
+        }
+    }
+
     // Calibrator editing (Debug)
     @Published var calibAString: String = ""
     @Published var calibPString: String = ""
@@ -67,26 +77,22 @@ final class IlluminationViewModel: ObservableObject {
     func startBackgroundPolling() {
         guard !pollingActive else { return }
         pollingActive = true
-        timer?.invalidate(); timer = nil
+        timer?.invalidate()
+        timer = nil
+        syncFromController()
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                self.enabled = self.controller.appIsEnabled()
-                self.userPercent = self.controller.currentUserPercent()
-                self.alsAvailable = ALSManager.shared.available
-                self.alsAutoEnabled = ALSManager.shared.autoEnabled
-                // Keep capability in sync when polling is active
-                if self.controller.currentGammaCapDetails().sawEDR {
-                    if self.edrUnsupportedConfirmed { self.edrUnsupportedConfirmed = false }
-                }
+            Task { @MainActor [weak self] in
+                self?.syncFromController()
             }
         }
+        timer?.tolerance = 0.2
         if let t = timer { RunLoop.main.add(t, forMode: .common) }
     }
 
     func stopBackgroundPolling() {
         pollingActive = false
-        timer?.invalidate(); timer = nil
+        timer?.invalidate()
+        timer = nil
     }
 
     // MARK: - Derived status

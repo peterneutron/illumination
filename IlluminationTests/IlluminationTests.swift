@@ -78,6 +78,30 @@ struct IlluminationTests {
         #expect(p1 >= p0)
         #expect(p2 >= p1)
         #expect(p2 <= 100)
+
+        let f0 = BrightnessController.factor(forPercent: 0, cap: cap)
+        let f1 = BrightnessController.factor(forPercent: 50, cap: cap)
+        let f2 = BrightnessController.factor(forPercent: 100, cap: cap)
+
+        #expect(f0 >= 1.0 && f0 <= cap)
+        #expect(f1 >= f0)
+        #expect(f2 >= f1)
+        #expect(f2 <= cap)
+
+        let roundTrip = BrightnessController.percent(forFactor: BrightnessController.factor(forPercent: 37, cap: cap), cap: cap)
+        #expect(abs(roundTrip - 37.0) < 0.0001)
+    }
+
+    @Test("Guard cap behavior is bounded and deterministic")
+    func brightnessGuardCapComputation() {
+        let noGuard = BrightnessController.effectiveCap(rawCap: 1.85, guardEnabled: false, guardFactor: 0.90)
+        #expect(noGuard == 1.70)
+
+        let guarded = BrightnessController.effectiveCap(rawCap: 1.85, guardEnabled: true, guardFactor: 0.90)
+        #expect(abs(guarded - 1.53) < 0.0001)
+
+        let floorBound = BrightnessController.effectiveCap(rawCap: 0.80, guardEnabled: true, guardFactor: 0.70)
+        #expect(floorBound == 1.0)
     }
 
     @Test("ALS decode handles malformed and sentinel inputs")

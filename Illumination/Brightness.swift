@@ -162,6 +162,7 @@ final class BrightnessController {
     private let refSpan: Double = 0.6 // scale for reference EDR lift normalization
     private let refAlpha: Double = 1.0 // exponent for reference gain impact
     private var capPoller: Timer?
+    private var edrRecoveryTimer: Timer?
     private var edrLowStreak: Int = 0
     private var edrRecoveryPendingRevert: Bool = false
     // Guard mode controls (user-configurable)
@@ -179,7 +180,13 @@ final class BrightnessController {
     private var hdrDuckFadeDuration: Double = 0.25 // seconds
     private let hdrSampler = HDRRegionSampler()
 
+    private func onMainSync<T>(_ body: () -> T) -> T {
+        if Thread.isMainThread { return body() }
+        return DispatchQueue.main.sync(execute: body)
+    }
+
     init() {
+        precondition(Thread.isMainThread, "BrightnessController must be initialized on the main thread")
         // Restore persisted state
         let storedEnabled = Settings.masterEnabled
         let storedValue = Settings.brightnessFactor
@@ -204,9 +211,8 @@ final class BrightnessController {
                 // derive percent from factor for sticky behavior
                 userPercent = BrightnessController.percent(forFactor: factor, cap: maxCap)
             } else { // assume 0..100 percent
-                let p = Swift.max(0.0, Swift.min(100.0, v)) / 100.0
-                userPercent = p * 100.0
-                factor = 1.0 + (maxCap - 1.0) * p
+                userPercent = Swift.max(0.0, Swift.min(100.0, v))
+                factor = BrightnessController.factor(forPercent: userPercent, cap: maxCap)
                 Settings.brightnessFactor = factor
             }
         } else {
@@ -240,6 +246,12 @@ final class BrightnessController {
     }
 
     func setEnabled(_ enabled: Bool) {
+        onMainSync {
+            setEnabledOnMain(enabled)
+        }
+    }
+
+    private func setEnabledOnMain(_ enabled: Bool) {
         // If EDR not supported, force disabled
         let supportsEDR = currentGammaCapDetails().sawEDR
         let request = enabled && supportsEDR
@@ -259,21 +271,25 @@ final class BrightnessController {
             DispatchQueue.main.async {
                 TileFeature.shared.suspendForMasterDisable()
             }
+            edrRecoveryTimer?.invalidate()
+            edrRecoveryTimer = nil
             technique.disable()
         }
     }
 
     // Expose current master-enabled state for collaborators
-    func appIsEnabled() -> Bool { enabled }
+    func appIsEnabled() -> Bool { onMainSync { enabled } }
 
     func setBrightnessFactor(_ factor: Double) {
-        let maxCap = currentGammaCap()
-        self.factor = Swift.max(1.0, Swift.min(maxCap, factor))
-        // Update user intent based on current cap
-        self.userPercent = BrightnessController.percent(forFactor: self.factor, cap: maxCap)
-        Settings.brightnessFactor = self.factor
-        if enabled {
-            technique.adjust(factor: Float(self.factor))
+        onMainSync {
+            let maxCap = currentGammaCap()
+            self.factor = Swift.max(1.0, Swift.min(maxCap, factor))
+            // Update user intent based on current cap
+            self.userPercent = BrightnessController.percent(forFactor: self.factor, cap: maxCap)
+            Settings.brightnessFactor = self.factor
+            if enabled {
+                technique.adjust(factor: Float(self.factor))
+            }
         }
     }
 
@@ -283,14 +299,15 @@ final class BrightnessController {
     }
 
     func setUserPercent(_ percent: Double) {
-        let p = Swift.max(0.0, Swift.min(100.0, percent))
-        userPercent = p
-        let cap = currentGammaCap()
-        let f = 1.0 + (cap - 1.0) * (p / 100.0)
-        self.factor = Swift.max(1.0, Swift.min(cap, f))
-        Settings.brightnessFactor = self.factor
-        if enabled {
-            technique.adjust(factor: Float(self.factor))
+        onMainSync {
+            let p = Swift.max(0.0, Swift.min(100.0, percent))
+            userPercent = p
+            let cap = currentGammaCap()
+            self.factor = BrightnessController.factor(forPercent: p, cap: cap)
+            Settings.brightnessFactor = self.factor
+            if enabled {
+                technique.adjust(factor: Float(self.factor))
+            }
         }
     }
 
@@ -299,8 +316,7 @@ final class BrightnessController {
             technique.screenUpdate(screens: targetDisplays())
             // Recompute factor from user intent with new cap
             let cap = currentGammaCap()
-            let target = 1.0 + (cap - 1.0) * (userPercent / 100.0)
-            factor = Swift.min(target, cap)
+            factor = BrightnessController.factor(forPercent: userPercent, cap: cap)
             technique.adjust(factor: Float(factor))
         }
         // Refresh display capability/probe info on topology changes
@@ -310,8 +326,7 @@ final class BrightnessController {
     @objc private func screensDidWake(_ note: Notification) {
         if enabled {
             let cap = currentGammaCap()
-            let target = 1.0 + (cap - 1.0) * (userPercent / 100.0)
-            factor = Swift.min(target, cap)
+            factor = BrightnessController.factor(forPercent: userPercent, cap: cap)
             technique.adjust(factor: Float(factor))
         }
         // Refresh display capability after wake
@@ -321,11 +336,19 @@ final class BrightnessController {
     // MARK: - Cap computation
 
     func currentGammaCap() -> Double {
-        // Inspect target displays for EDR capabilities, derive cap from ratio of max/reference EDR.
-        return currentGammaCapDetails().cap
+        onMainSync {
+            // Inspect target displays for EDR capabilities, derive cap from ratio of max/reference EDR.
+            currentGammaCapDetailsOnMain().cap
+        }
     }
 
     func currentGammaCapDetails() -> (cap: Double, rawCap: Double, bestRatio: Double, adaptiveMargin: Double, refGain: Double, refAlpha: Double, sawEDR: Bool, abStaticMode: Bool, guardFactor: Double) {
+        onMainSync {
+            currentGammaCapDetailsOnMain()
+        }
+    }
+
+    private func currentGammaCapDetailsOnMain() -> (cap: Double, rawCap: Double, bestRatio: Double, adaptiveMargin: Double, refGain: Double, refAlpha: Double, sawEDR: Bool, abStaticMode: Bool, guardFactor: Double) {
         // Determine capability from ALL screens using potential EDR
         var anyScreenHasPotentialEDR = false
         for s in NSScreen.screens {
@@ -365,17 +388,22 @@ final class BrightnessController {
             let refGain = Swift.max(0.0, Swift.min(1.0, (bestRef - 1.0) / Swift.max(0.0001, refSpan)))
             let rawCap = 1.0 + (bestMaxPotentialEDR - 1.0) * adaptiveMargin
             let guardApplied = guardEnabled ? guardFactor : 1.0
-            // Apply ceiling first, then guard, so guard can reduce below the ceiling
-            let preClamped = Swift.min(rawCap, 1.70)
-            let effectiveCap = preClamped * guardApplied
-            let capped = Swift.max(1.0, effectiveCap)
+            let capped = BrightnessController.effectiveCap(
+                rawCap: rawCap,
+                guardEnabled: guardEnabled,
+                guardFactor: guardFactor
+            )
             // Map abStaticMode to guardEnabled for compatibility with Debug UI
             return (capped, rawCap, bestRatio, adaptiveMargin, refGain, refAlpha, anyScreenHasPotentialEDR, guardEnabled, guardApplied)
         }
         // Fallback if EDR not reported/available: treat as SDR-only (cap = 1.0)
         let fallback = 1.0
         let guardApplied = guardEnabled ? guardFactor : 1.0
-        let effective = fallback * guardApplied
+        let effective = BrightnessController.effectiveCap(
+            rawCap: fallback,
+            guardEnabled: guardEnabled,
+            guardFactor: guardFactor
+        )
         return (effective, fallback, 1.0, safetyMargin, 0.0, refAlpha, anyScreenHasPotentialEDR, guardEnabled, guardApplied)
     }
 
@@ -387,8 +415,7 @@ final class BrightnessController {
             let details = self.currentGammaCapDetails()
             let cap = details.cap
             if self.enabled {
-                let target = 1.0 + (cap - 1.0) * (self.userPercent / 100.0)
-                let newFactor = Swift.max(1.0, Swift.min(cap, target))
+                let newFactor = BrightnessController.factor(forPercent: self.userPercent, cap: cap)
                 var effective = newFactor
                 // HDR-aware auto-duck (driven by detection mode)
                 if self.hdrRegionSamplerModeValue() != 0 {
@@ -407,7 +434,7 @@ final class BrightnessController {
                         self.startHDRDuckAnimation(to: d)
                     }
                     if !self.hdrDuckEngine.isAnimating && self.hdrDuckEngine.duckLevel > 0.0001 {
-                        let duckTarget = 1.0 + (cap - 1.0) * (self.hdrAwareDuckPercent / 100.0)
+                        let duckTarget = BrightnessController.factor(forPercent: self.hdrAwareDuckPercent, cap: cap)
                         effective = (1.0 - self.hdrDuckEngine.duckLevel) * effective + self.hdrDuckEngine.duckLevel * duckTarget
                     }
                 }
@@ -438,14 +465,17 @@ final class BrightnessController {
                     self.technique.screenUpdate(screens: targetDisplays())
                     self.technique.nudgeEDR()
                     // Revert to user prefs after a short burst
-                    Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+                    self.edrRecoveryTimer?.invalidate()
+                    self.edrRecoveryTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
                         guard let self = self else { return }
                         self.technique.setOverlayConfig(fullsize: self.overlayFullsizeEnabled(), fps: self.overlayFPSValue())
                         self.edrRecoveryPendingRevert = false
+                        self.edrRecoveryTimer = nil
                     }
                 }
             }
         })
+        capPoller?.tolerance = 0.2
         if let capPoller {
             RunLoop.main.add(capPoller, forMode: .common)
         }
@@ -454,6 +484,8 @@ final class BrightnessController {
     private func stopCapPoller() {
         capPoller?.invalidate()
         capPoller = nil
+        edrRecoveryTimer?.invalidate()
+        edrRecoveryTimer = nil
     }
 
     private func startHDRDuckAnimation(to target: Double) {
@@ -463,8 +495,8 @@ final class BrightnessController {
             // Recompute effective factor and apply
             let details = self.currentGammaCapDetails()
             let cap = details.cap
-            let base = 1.0 + (cap - 1.0) * (self.userPercent / 100.0)
-            let duckTarget = 1.0 + (cap - 1.0) * (self.hdrAwareDuckPercent / 100.0)
+            let base = BrightnessController.factor(forPercent: self.userPercent, cap: cap)
+            let duckTarget = BrightnessController.factor(forPercent: self.hdrAwareDuckPercent, cap: cap)
             var effective = (1.0 - level) * base + level * duckTarget
             effective = Swift.max(1.0, Swift.min(cap, effective))
             if abs(effective - self.factor) > 0.0001 {
@@ -475,60 +507,91 @@ final class BrightnessController {
     }
 
     // MARK: - Guard controls
-    func isGuardEnabled() -> Bool { guardEnabled }
-    func guardFactorValue() -> Double { guardFactor }
-    func currentFactorValue() -> Double { factor }
-    func currentUserPercent() -> Double { userPercent }
+    func isGuardEnabled() -> Bool { onMainSync { guardEnabled } }
+    func guardFactorValue() -> Double { onMainSync { guardFactor } }
+    func currentFactorValue() -> Double { onMainSync { factor } }
+    func currentUserPercent() -> Double { onMainSync { userPercent } }
+    static func factor(forPercent percent: Double, cap: Double) -> Double {
+        let p = Swift.max(0.0, Swift.min(100.0, percent))
+        let boundedCap = Swift.max(1.0, cap)
+        let factor = 1.0 + (boundedCap - 1.0) * (p / 100.0)
+        return Swift.max(1.0, Swift.min(boundedCap, factor))
+    }
+
     static func percent(forFactor factor: Double, cap: Double) -> Double {
-        let denom = Swift.max(0.0001, (cap - 1.0))
-        let pct = (factor - 1.0) / denom * 100.0
+        let boundedCap = Swift.max(1.0, cap)
+        let denom = Swift.max(0.0001, (boundedCap - 1.0))
+        let boundedFactor = Swift.max(1.0, Swift.min(boundedCap, factor))
+        let pct = (boundedFactor - 1.0) / denom * 100.0
         return Swift.max(0.0, Swift.min(100.0, pct))
+    }
+    static func effectiveCap(rawCap: Double, guardEnabled: Bool, guardFactor: Double) -> Double {
+        let preClamped = Swift.min(Swift.max(1.0, rawCap), 1.70)
+        let guardApplied = guardEnabled ? Swift.max(0.70, Swift.min(0.98, guardFactor)) : 1.0
+        return Swift.max(1.0, preClamped * guardApplied)
     }
 
     // MARK: - Overlay controls
-    func overlayFullsizeEnabled() -> Bool { Settings.overlayFullsize }
+    func overlayFullsizeEnabled() -> Bool { onMainSync { Settings.overlayFullsize } }
     func setOverlayFullsize(_ enabled: Bool) {
-        Settings.overlayFullsize = enabled
-        technique.setOverlayConfig(fullsize: enabled, fps: overlayFPSValue())
+        onMainSync {
+            Settings.overlayFullsize = enabled
+            technique.setOverlayConfig(fullsize: enabled, fps: overlayFPSValue())
+        }
     }
-    func overlayFPSValue() -> Int { Settings.overlayFPS }
+    func overlayFPSValue() -> Int { onMainSync { Settings.overlayFPS } }
     func setOverlayFPS(_ fps: Int) {
-        Settings.overlayFPS = fps
-        technique.setOverlayConfig(fullsize: overlayFullsizeEnabled(), fps: Settings.overlayFPS)
+        onMainSync {
+            Settings.overlayFPS = fps
+            technique.setOverlayConfig(fullsize: overlayFullsizeEnabled(), fps: Settings.overlayFPS)
+        }
     }
     func edrNudge() {
-        technique.nudgeEDR()
+        onMainSync {
+            technique.nudgeEDR()
+        }
     }
     // MARK: - HDR-aware controls
-    func hdrAwareIsEnabled() -> Bool { hdrAwareEnabled }
+    func hdrAwareIsEnabled() -> Bool { onMainSync { hdrAwareEnabled } }
     func setHDRAwareEnabled(_ enabled: Bool) {
-        hdrAwareEnabled = enabled
-        Settings.hdrAwareEnabled = enabled
-        if !enabled { hdrDuckEngine.reset(); hdrActiveStreak = 0; hdrInactiveStreak = 0 }
+        onMainSync {
+            hdrAwareEnabled = enabled
+            Settings.hdrAwareEnabled = enabled
+            if !enabled { hdrDuckEngine.reset(); hdrActiveStreak = 0; hdrInactiveStreak = 0 }
+        }
     }
-    func hdrAwareDuckPercentValue() -> Double { hdrAwareDuckPercent }
+    func hdrAwareDuckPercentValue() -> Double { onMainSync { hdrAwareDuckPercent } }
     func setHDRAwareDuckPercent(_ percent: Double) {
-        let p = Swift.max(0.0, Swift.min(100.0, percent))
-        hdrAwareDuckPercent = p
-        Settings.hdrDuckPercent = p
+        onMainSync {
+            let p = Swift.max(0.0, Swift.min(100.0, percent))
+            hdrAwareDuckPercent = p
+            Settings.hdrDuckPercent = p
+        }
     }
-    func hdrAwareThresholdValue() -> Double { hdrAwareThreshold }
+    func hdrAwareThresholdValue() -> Double { onMainSync { hdrAwareThreshold } }
     func setHDRAwareThreshold(_ v: Double) {
-        let val = Swift.max(1.1, Swift.min(3.0, v))
-        hdrAwareThreshold = val
-        Settings.hdrThreshold = val
+        onMainSync {
+            let val = Swift.max(1.1, Swift.min(3.0, v))
+            hdrAwareThreshold = val
+            Settings.hdrThreshold = val
+        }
     }
     // 0=Off,1=On(always),2=Auto(app+sampler),3=Apps(app-only)
-    func hdrRegionSamplerModeValue() -> Int { max(0, min(3, hdrRegionSamplerMode)) }
+    func hdrRegionSamplerModeValue() -> Int { onMainSync { max(0, min(3, hdrRegionSamplerMode)) } }
     func setHDRRegionSamplerMode(_ mode: Int) {
-        hdrRegionSamplerMode = max(0, min(3, mode))
-        Settings.hdrRegionSamplerMode = hdrRegionSamplerMode
+        onMainSync {
+            hdrRegionSamplerMode = max(0, min(3, mode))
+            Settings.hdrRegionSamplerMode = hdrRegionSamplerMode
+            if hdrRegionSamplerMode == 0 { hdrSampler.stop() }
+        }
     }
-    func hdrAwareFadeDurationValue() -> Double { hdrDuckFadeDuration }
+    func hdrAwareFadeDurationValue() -> Double { onMainSync { hdrDuckFadeDuration } }
     func setHDRAwareFadeDuration(_ seconds: Double) {
-        let v = Swift.max(0.05, Swift.min(2.0, seconds))
-        hdrDuckFadeDuration = v
-        Settings.hdrFadeDuration = v
+        onMainSync {
+            let v = Swift.max(0.05, Swift.min(2.0, seconds))
+            hdrDuckFadeDuration = v
+            Settings.hdrFadeDuration = v
+        }
     }
 
     private func isHDRContentLikely(bestRatioHint: Double) -> Bool {
@@ -561,13 +624,17 @@ final class BrightnessController {
         switch mode { case 2: return "Auto"; case 3: return "Apps"; default: return "Off" }
     }
     func setGuardEnabled(_ enabled: Bool) {
-        guardEnabled = enabled
-        Settings.guardEnabled = enabled
+        onMainSync {
+            guardEnabled = enabled
+            Settings.guardEnabled = enabled
+        }
     }
     func setGuardFactor(_ factor: Double) {
-        let clamped = Swift.max(0.70, Swift.min(0.98, factor))
-        guardFactor = clamped
-        Settings.guardFactor = clamped
+        onMainSync {
+            let clamped = Swift.max(0.70, Swift.min(0.98, factor))
+            guardFactor = clamped
+            Settings.guardFactor = clamped
+        }
     }
 }
     // MARK: - HDR ducking engine
