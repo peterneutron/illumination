@@ -123,6 +123,15 @@ final class ALSManager {
         if on == autoEnabled { return }
         autoEnabled = on
         Settings.alsAutoEnabled = on
+        guard on, let lux = currentLux, lux.isFinite else { return }
+
+        // Prime dwell counters from current lux so manual -> auto transitions
+        // in clearly dark/bright scenes settle immediately instead of sticking.
+        let requiredOn = max(1, Int(ceil(onSeconds * sampleHz)))
+        let requiredOff = max(1, Int(ceil(offSeconds * sampleHz)))
+        aboveCount = lux >= onLux ? requiredOn : 0
+        belowCount = lux <= offLux ? requiredOff : 0
+        evaluateAuto(lux: lux)
     }
 
     func noteManualOverride() { graceUntil = Date().addingTimeInterval(15.0) }

@@ -154,8 +154,7 @@ struct IlluminationMenuView: View {
         }
         .padding(12)
         .frame(width: 320)
-        .onAppear { vm.stopBackgroundPolling() }
-        .onDisappear { vm.startBackgroundPolling() }
+        .onAppear { vm.refreshNow() }
     }
 
     private struct NotSupportedView: View {

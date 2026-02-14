@@ -19,6 +19,7 @@ final class IlluminationViewModel: ObservableObject {
     private let controller = BrightnessController.shared
     private var timer: Timer?
     private var pollingActive = false
+    private var autoModeBeforeMasterOff: Bool = false
 
     private func syncFromController() {
         enabled = controller.appIsEnabled()
@@ -49,12 +50,18 @@ final class IlluminationViewModel: ObservableObject {
     func setEnabled(_ on: Bool) {
         Settings.masterEnabled = on
         controller.setEnabled(on)
-        enabled = controller.appIsEnabled()
+        syncFromController()
     }
 
     func setEnabledFromUser(_ on: Bool) {
         ALSManager.shared.noteManualOverride()
+        if !on {
+            autoModeBeforeMasterOff = alsAutoEnabled
+        }
         setEnabled(on)
+        if on, autoModeBeforeMasterOff {
+            setALSMode(true, ensureMasterOn: false)
+        }
     }
 
     func setPercent(_ p: Double) {
@@ -65,8 +72,16 @@ final class IlluminationViewModel: ObservableObject {
 
     // ALS Auto
     func setALSMode(_ on: Bool) {
+        setALSMode(on, ensureMasterOn: true)
+    }
+
+    private func setALSMode(_ on: Bool, ensureMasterOn: Bool) {
+        if on && ensureMasterOn && !controller.appIsEnabled() {
+            setEnabled(true)
+        }
         alsAutoEnabled = on
         ALSManager.shared.setAutoEnabled(on)
+        syncFromController()
     }
 
     var modeIsAuto: Bool { alsAutoEnabled }
@@ -123,6 +138,10 @@ final class IlluminationViewModel: ObservableObject {
         pollingActive = false
         timer?.invalidate()
         timer = nil
+    }
+
+    func refreshNow() {
+        syncFromController()
     }
 
     // MARK: - Derived status
