@@ -1,5 +1,15 @@
 import Foundation
 
+@inline(__always)
+func L(_ key: String) -> String {
+    NSLocalizedString(key, comment: "")
+}
+
+@inline(__always)
+func LF(_ key: String, _ args: CVarArg...) -> String {
+    String(format: NSLocalizedString(key, comment: ""), arguments: args)
+}
+
 enum Settings {
     enum Key: String, CaseIterable {
         case entryMinPercent = "illumination.als.entry.minPercent"

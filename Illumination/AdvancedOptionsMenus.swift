@@ -7,11 +7,11 @@ struct AdvancedOptionsMenu: View {
     var onOpenAppPicker: () -> Void
 
     var body: some View {
-        Menu("Advanced Options") {
+        Menu(L("Advanced Options")) {
             Group {
-                Text("Brightness & Safety").font(.caption).foregroundStyle(.secondary)
-                Toggle("Guard Mode", isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
-                Menu("Guard Factor: \(Int(round(vm.guardFactor * 100)))%") {
+                Text(L("Brightness & Safety")).font(.caption).foregroundStyle(.secondary)
+                Toggle(L("Guard Mode"), isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
+                Menu(LF("Guard Factor: %d%%", Int(round(vm.guardFactor * 100)))) {
                     ForEach([0.75, 0.85, 0.90, 0.95], id: \.self) { factor in
                         Button(action: { vm.setGuardFactor(factor) }) {
                             HStack {
@@ -23,42 +23,42 @@ struct AdvancedOptionsMenu: View {
                         }
                     }
                 }
-                Button("EDR Nudge") { vm.edrNudge() }
+                Button(L("EDR Nudge")) { vm.edrNudge() }
             }
             .disabled(!(vm.enabled || vm.alsAutoEnabled))
 
             Divider()
 
             Group {
-                Text("ALS Automatic").font(.caption).foregroundStyle(.secondary)
-                Menu("Sensitivity: \(vm.alsProfileName)") {
+                Text(L("ALS Automatic")).font(.caption).foregroundStyle(.secondary)
+                Menu(LF("Sensitivity: %@", vm.alsProfileName)) {
                     Button(action: { vm.setALSProfileTwilight() }) {
                         HStack {
-                            Text("Twilight")
+                            Text(L("Twilight"))
                             if ALSManager.shared.getProfile() == .twilight { Image(systemName: "checkmark") }
                         }
                     }
                     Button(action: { vm.setALSProfileDaybreak() }) {
                         HStack {
-                            Text("Daybreak")
+                            Text(L("Daybreak"))
                             if ALSManager.shared.getProfile() == .daybreak { Image(systemName: "checkmark") }
                         }
                     }
                     Button(action: { vm.setALSProfileMidday() }) {
                         HStack {
-                            Text("Midday")
+                            Text(L("Midday"))
                             if ALSManager.shared.getProfile() == .midday { Image(systemName: "checkmark") }
                         }
                     }
                     Button(action: { vm.setALSProfileSunburst() }) {
                         HStack {
-                            Text("Sunburst")
+                            Text(L("Sunburst"))
                             if ALSManager.shared.getProfile() == .sunburst { Image(systemName: "checkmark") }
                         }
                     }
                     Button(action: { vm.setALSProfileHighNoon() }) {
                         HStack {
-                            Text("High Noon")
+                            Text(L("High Noon"))
                             if ALSManager.shared.getProfile() == .highNoon { Image(systemName: "checkmark") }
                         }
                     }

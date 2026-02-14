@@ -58,7 +58,7 @@ struct IlluminationMenuView: View {
                         .truncationMode(.tail)
                     if vm.alsAutoEnabled {
                         Image(systemName: vm.alsProfileSymbolName)
-                            .help("Automatic (\(ALSManager.shared.getProfile().displayName))")
+                            .help(LF("Automatic (%@)", ALSManager.shared.getProfile().displayName))
                     }
                 }
                 .font(.caption)
@@ -82,7 +82,7 @@ struct IlluminationMenuView: View {
                     if let issue = RuntimeDiagnostics.shared.lastIssue {
                         HStack(spacing: 4) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                            Text("Issue")
+                            Text(L("Issue"))
                         }
                         .foregroundStyle(.orange)
                         .help(issue)
@@ -96,7 +96,7 @@ struct IlluminationMenuView: View {
 
             VStack(alignment: .leading) {
                 HStack {
-                    Text("Brightness")
+                    Text(L("Brightness"))
                     Spacer()
                     LivePercentLabel()
                         .frame(minWidth: 32, alignment: .trailing)
@@ -136,7 +136,7 @@ struct IlluminationMenuView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Button("Quit") {
+                Button(L("Quit")) {
                     NSApplication.shared.terminate(nil)
                 }
                 .keyboardShortcut("q", modifiers: .command)
@@ -154,7 +154,11 @@ struct IlluminationMenuView: View {
         }
         .padding(12)
         .frame(width: 320)
-        .onAppear { vm.refreshNow() }
+        .onAppear {
+            vm.refreshNow()
+            vm.stopBackgroundPolling()
+        }
+        .onDisappear { vm.startBackgroundPolling() }
     }
 
     private struct NotSupportedView: View {
@@ -162,9 +166,9 @@ struct IlluminationMenuView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Display Not Supported")
                     .font(.title2).bold()
-                Text("This Mac/display does not report Extended Dynamic Range (EDR). Illumination targets XDR-capable displays only.")
+                Text(L("This Mac/display does not report Extended Dynamic Range (EDR). Illumination targets XDR-capable displays only."))
                     .font(.callout)
-                Button("Quit App") { NSApplication.shared.terminate(nil) }
+                Button(L("Quit App")) { NSApplication.shared.terminate(nil) }
                     .buttonStyle(.borderedProminent)
                     .padding(.top, 6)
             }
@@ -172,12 +176,12 @@ struct IlluminationMenuView: View {
     }
 
     private func tileModeDisplay(vm: IlluminationViewModel) -> String {
-        guard (vm.enabled || vm.alsAutoEnabled) else { return "Off" }
-        return vm.tileEnabled ? (vm.tileFullOpacity ? "Full" : "Low") : "Off"
+        guard (vm.enabled || vm.alsAutoEnabled) else { return L("Off") }
+        return vm.tileEnabled ? (vm.tileFullOpacity ? L("Full") : L("Low")) : L("Off")
     }
 
     private func scopeDisplay(vm: IlluminationViewModel) -> String {
-        guard (vm.enabled || vm.alsAutoEnabled) else { return "Off" }
+        guard (vm.enabled || vm.alsAutoEnabled) else { return L("Off") }
         return vm.appPolicyScopeName
     }
 
@@ -275,11 +279,11 @@ private struct QuickActionsBar: View {
             Spacer(minLength: 0)
             // Master state: Off / Manual / Auto
             MultiStateActionButton<MasterControlState>(
-                title: "Master",
+                title: L("Master"),
                 states: [
-                    ActionState(value: .off, imageName: "sun.min", tint: .red, help: "Off"),
-                    ActionState(value: .manual, imageName: "sun.max.fill", tint: .yellow, help: "Manual"),
-                    ActionState(value: .auto, imageName: "lightspectrum.horizontal", tint: .green, help: "Auto")
+                    ActionState(value: .off, imageName: "sun.min", tint: .red, help: L("Off")),
+                    ActionState(value: .manual, imageName: "sun.max.fill", tint: .yellow, help: L("Manual")),
+                    ActionState(value: .auto, imageName: "lightspectrum.horizontal", tint: .green, help: L("Auto"))
                 ],
                 selection: masterControlState,
                 size: 48,
@@ -291,11 +295,11 @@ private struct QuickActionsBar: View {
 
             // Tile modes: Off / Low / Full
             MultiStateActionButton<TileMode>(
-                title: "Tile",
+                title: L("Tile"),
                 states: [
-                    ActionState(value: .off,  imageName: "rectangle",       tint: .gray,   help: "Tile Off"),
-                    ActionState(value: .low,  imageName: "rectangle.fill",  tint: .yellow, help: "Tile Low Opacity"),
-                    ActionState(value: .full, imageName: "rectangle.fill",  tint: .green,  help: "Tile Full Opacity")
+                    ActionState(value: .off,  imageName: "rectangle",       tint: .gray,   help: L("Tile Off")),
+                    ActionState(value: .low,  imageName: "rectangle.fill",  tint: .yellow, help: L("Tile Low Opacity")),
+                    ActionState(value: .full, imageName: "rectangle.fill",  tint: .green,  help: L("Tile Full Opacity"))
                 ],
                 selection: tileMode,
                 size: 48,
@@ -305,15 +309,15 @@ private struct QuickActionsBar: View {
             )
             .disabled(!(vm.enabled || vm.alsAutoEnabled) || !vm.tileAvailable)
             .opacity((!(vm.enabled || vm.alsAutoEnabled) || !vm.tileAvailable) ? 0.5 : 1.0)
-            .help(vm.tileAvailable ? "Toggle HDR Tile" : "HDR asset not found")
+            .help(vm.tileAvailable ? L("Toggle HDR Tile") : L("HDR asset not found"))
             Spacer(minLength: 0)
 
             // Scope: Everywhere / Apps
             MultiStateActionButton<Int>(
-                title: "Scope",
+                title: L("Scope"),
                 states: [
-                    ActionState(value: 0, imageName: "globe",                   tint: .gray,  help: "Everywhere"),
-                    ActionState(value: 1, imageName: "app.connected.to.app.below.fill", tint: .blue,  help: "Apps")
+                    ActionState(value: 0, imageName: "globe",                   tint: .gray,  help: L("Everywhere")),
+                    ActionState(value: 1, imageName: "app.connected.to.app.below.fill", tint: .blue,  help: L("Apps"))
                 ],
                 selection: appScope,
                 size: 48,

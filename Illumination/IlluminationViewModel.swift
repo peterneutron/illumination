@@ -28,10 +28,23 @@ final class IlluminationViewModel: ObservableObject {
     private var autoModeBeforeMasterOff: Bool = false
 
     private func syncFromController() {
-        enabled = controller.appIsEnabled()
-        userPercent = controller.currentUserPercent()
-        alsAvailable = ALSManager.shared.available
-        alsAutoEnabled = ALSManager.shared.autoEnabled
+        let nextEnabled = controller.appIsEnabled()
+        let nextUserPercent = controller.currentUserPercent()
+        let nextALSAvailable = ALSManager.shared.available
+        let nextALSAutoEnabled = ALSManager.shared.autoEnabled
+
+        if enabled != nextEnabled {
+            enabled = nextEnabled
+        }
+        if abs(userPercent - nextUserPercent) > 0.0001 {
+            userPercent = nextUserPercent
+        }
+        if alsAvailable != nextALSAvailable {
+            alsAvailable = nextALSAvailable
+        }
+        if alsAutoEnabled != nextALSAutoEnabled {
+            alsAutoEnabled = nextALSAutoEnabled
+        }
         if controller.currentGammaCapDetails().sawEDR && edrUnsupportedConfirmed {
             edrUnsupportedConfirmed = false
         }
@@ -115,8 +128,8 @@ final class IlluminationViewModel: ObservableObject {
     }
     var appPolicyScopeName: String {
         switch appScope {
-        case 0: return "Everywhere"
-        default: return "Apps"
+        case 0: return L("Everywhere")
+        default: return L("Apps")
         }
     }
     var appPolicyBlocked: Bool { controller.appPolicyDiagnostics().result == "blocked" }
@@ -169,11 +182,11 @@ final class IlluminationViewModel: ObservableObject {
     var statusText: String {
         let policy = controller.appPolicyDiagnostics()
         if policy.result == "blocked" {
-            let label = policy.frontmostBundleID == "unknown" ? "app" : policy.frontmostBundleID
-            return "Blocked by app: \(label)"
+            let label = policy.frontmostBundleID == "unknown" ? L("app") : policy.frontmostBundleID
+            return LF("Blocked by app: %@", label)
         }
-        if alsAutoEnabled { return "Automatic" }
-        return enabled ? "Enabled" : "Disabled"
+        if alsAutoEnabled { return L("Automatic") }
+        return enabled ? L("Enabled") : L("Disabled")
     }
 
     var alsProfileSymbolName: String {
@@ -362,14 +375,14 @@ final class IlluminationViewModel: ObservableObject {
 
     var addFrontmostDisabledReason: String {
         if canAddFrontmostBlockedApp { return "" }
-        return "Frontmost app has no bundle identifier."
+        return L("Frontmost app has no bundle identifier.")
     }
 
     var frontmostAppDisplayLabel: String {
         let info = HDRAppList.frontmostAppInfo()
         if let name = info.displayName, !name.isEmpty { return name }
         if let bundleID = info.bundleID, !bundleID.isEmpty { return bundleID }
-        return "Unavailable"
+        return L("Unavailable")
     }
 
     func addFrontmostBlockedApp() {
