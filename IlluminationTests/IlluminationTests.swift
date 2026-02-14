@@ -332,6 +332,24 @@ struct IlluminationTests {
         #expect(everywhereAllowed.result == "allowed")
     }
 
+    @Test("Idle app-policy evaluation gate is deterministic")
+    func appPolicyEvaluationGate() {
+        #expect(BrightnessController.shouldEvaluateAppPolicy(scopeRaw: 1, denylistBlocked: false, hasDenylistSnapshot: false))
+        #expect(BrightnessController.shouldEvaluateAppPolicy(scopeRaw: 0, denylistBlocked: true, hasDenylistSnapshot: false))
+        #expect(BrightnessController.shouldEvaluateAppPolicy(scopeRaw: 0, denylistBlocked: false, hasDenylistSnapshot: true))
+        #expect(BrightnessController.shouldEvaluateAppPolicy(scopeRaw: 0, denylistBlocked: false, hasDenylistSnapshot: false) == false)
+    }
+
+    @Test("Frontmost app cache throttle helper")
+    func frontmostCacheThrottleHelper() {
+        let now = Date()
+        let shortlyAfter = now.addingTimeInterval(0.1)
+        let later = now.addingTimeInterval(0.5)
+        #expect(HDRAppList.shouldUseCachedFrontmost(lastFetchAt: now, now: shortlyAfter, minInterval: 0.25))
+        #expect(HDRAppList.shouldUseCachedFrontmost(lastFetchAt: now, now: later, minInterval: 0.25) == false)
+        #expect(HDRAppList.shouldUseCachedFrontmost(lastFetchAt: now, now: later, minInterval: 0.0) == false)
+    }
+
     @Test("Launch at login status labels are stable")
     func launchAtLoginStatusLabels() {
         #expect(LaunchAtLoginManager.statusLabel(for: .enabled).isEmpty == false)

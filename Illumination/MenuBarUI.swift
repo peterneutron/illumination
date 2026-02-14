@@ -341,7 +341,7 @@ private struct LiveTileModeLabel: NSViewRepresentable {
         var timer: Timer?
         func start(label: NSTextField) {
             timer?.invalidate(); timer = nil
-            timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { _ in
+            timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
                 let bc = BrightnessController.shared
                 let state = bc.uiStateSnapshot()
                 let active = state.masterEnabled || state.mode == .auto
@@ -423,7 +423,7 @@ private struct LivePercentLabel: NSViewRepresentable {
         var timer: Timer?
         func start(label: NSTextField) {
             timer?.invalidate(); timer = nil
-            timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            timer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { _ in
                 let bc = BrightnessController.shared
                 let state = bc.uiStateSnapshot()
                 let pct = Int(round(IlluminationViewModel.sliderDisplayPercent(

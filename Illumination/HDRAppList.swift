@@ -17,6 +17,12 @@ struct HDRAppRegistry: Codable {
 }
 
 enum HDRAppList {
+    private struct FrontmostCache {
+        let fetchedAt: Date
+        let info: (bundleID: String?, displayName: String?)
+    }
+
+    private static var frontmostCache: FrontmostCache?
     private static let defaultEntries: [HDRAppEntry] = [
         HDRAppEntry(bundleID: "com.apple.Photos", displayName: "Photos", isDefault: true, isEnabled: true),
         HDRAppEntry(bundleID: "com.apple.QuickTimePlayerX", displayName: "QuickTime Player", isDefault: true, isEnabled: true),
@@ -26,6 +32,21 @@ enum HDRAppList {
     static func frontmostAppInfo() -> (bundleID: String?, displayName: String?) {
         let app = NSWorkspace.shared.frontmostApplication
         return (app?.bundleIdentifier, app?.localizedName)
+    }
+
+    static func frontmostAppInfoThrottled(minInterval: TimeInterval = 0.25) -> (bundleID: String?, displayName: String?) {
+        let now = Date()
+        if let cached = frontmostCache,
+           shouldUseCachedFrontmost(lastFetchAt: cached.fetchedAt, now: now, minInterval: minInterval) {
+            return cached.info
+        }
+        let current = frontmostAppInfo()
+        frontmostCache = FrontmostCache(fetchedAt: now, info: current)
+        return current
+    }
+
+    static func shouldUseCachedFrontmost(lastFetchAt: Date, now: Date, minInterval: TimeInterval) -> Bool {
+        now.timeIntervalSince(lastFetchAt) < max(0.0, minInterval)
     }
 
     static func isFrontmostDenylistedApp() -> Bool {

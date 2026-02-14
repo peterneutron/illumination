@@ -29,9 +29,26 @@ struct RuntimeUIState: Equatable {
 final class BrightnessController {
     static let shared = BrightnessController()
 
+    private typealias CapDetails = (
+        cap: Double,
+        rawCap: Double,
+        bestRatio: Double,
+        adaptiveMargin: Double,
+        refGain: Double,
+        refAlpha: Double,
+        sawEDR: Bool,
+        abStaticMode: Bool,
+        guardFactor: Double
+    )
+
     private struct AppPolicySnapshot {
         let masterEnabled: Bool
         let userPercent: Double
+    }
+
+    private struct CapDetailsCache {
+        let details: CapDetails
+        let expiresAt: Date
     }
 
     private let technique = GammaTechnique()
@@ -72,6 +89,7 @@ final class BrightnessController {
     private var appPolicyRestorePending: Bool = false
     private var denylistBlocked: Bool = false
     private var denylistSnapshot: AppPolicySnapshot?
+    private var capDetailsCache: CapDetailsCache?
 
     private func onMainSync<T>(_ body: () -> T) -> T {
         if Thread.isMainThread { return body() }
@@ -135,6 +153,7 @@ final class BrightnessController {
     }
 
     @objc private func activeSpaceChanged(_ note: Notification) {
+        invalidateCapDetailsCacheOnMain()
         // Refresh overlays on Space changes and nudge EDR to re-engage
         technique.screenUpdate(screens: targetDisplays())
         technique.setOverlayConfig(fullsize: overlayFullsizeEnabled(), fps: overlayFPSValue())
@@ -215,6 +234,7 @@ final class BrightnessController {
     }
 
     @objc private func screensChanged(_ note: Notification) {
+        invalidateCapDetailsCacheOnMain()
         if enabled {
             technique.screenUpdate(screens: targetDisplays())
             // Recompute factor from user intent with new cap
@@ -227,6 +247,7 @@ final class BrightnessController {
     }
 
     @objc private func screensDidWake(_ note: Notification) {
+        invalidateCapDetailsCacheOnMain()
         if enabled {
             let cap = currentGammaCap()
             factor = BrightnessController.factor(forPercent: userPercent, cap: cap)
@@ -249,6 +270,20 @@ final class BrightnessController {
         onMainSync {
             currentGammaCapDetailsOnMain()
         }
+    }
+
+    private func currentGammaCapDetailsCachedOnMain(maxAge: TimeInterval = 0.4) -> CapDetails {
+        let now = Date()
+        if let cache = capDetailsCache, now < cache.expiresAt {
+            return cache.details
+        }
+        let details = currentGammaCapDetailsOnMain()
+        capDetailsCache = CapDetailsCache(details: details, expiresAt: now.addingTimeInterval(maxAge))
+        return details
+    }
+
+    private func invalidateCapDetailsCacheOnMain() {
+        capDetailsCache = nil
     }
 
     private func currentGammaCapDetailsOnMain() -> (cap: Double, rawCap: Double, bestRatio: Double, adaptiveMargin: Double, refGain: Double, refAlpha: Double, sawEDR: Bool, abStaticMode: Bool, guardFactor: Double) {
@@ -315,10 +350,12 @@ final class BrightnessController {
         stopCapPoller()
         capPoller = Timer(fire: Date.now, interval: edrPolicy.capPollIntervalSeconds, repeats: true, block: { [weak self] _ in
             guard let self = self else { return }
-            let details = self.currentGammaCapDetails()
-            let cap = details.cap
-            self.evaluateAppPolicyOverride()
+            if self.shouldEvaluateAppPolicyOnIdle() {
+                self.evaluateAppPolicyOverride()
+            }
             if self.enabled {
+                let details = self.currentGammaCapDetailsOnMain()
+                let cap = details.cap
                 let newFactor = BrightnessController.factor(forPercent: self.userPercent, cap: cap)
                 var effective = newFactor
                 // Experimental HDR ducking remains debug-only and must never override denylist policy.
@@ -359,14 +396,18 @@ final class BrightnessController {
                 }
                 // In paused mode, drive an occasional present to keep EDR alive without a tight loop
                 // Skip pulses if the HDR tile is enabled; tile maintains EDR by itself.
-                if !TileFeature.shared.enabled {
+                if self.userPercent > 0.0, !TileFeature.shared.enabled {
                     self.technique.pulseOverlays()
                 }
 
                 // EDR watchdog: if EDR appears disengaged (maxEDR ~ 1.0) while userPercent > 0, aggressively rebuild overlay in fullscreen mode and bump FPS
-                let bestMaxEDR = targetDisplays().map { Double($0.maximumExtendedDynamicRangeColorComponentValue) }.max() ?? 1.0
-                if self.userPercent > 0.0 && bestMaxEDR <= self.edrPolicy.edrLowThreshold {
-                    self.edrLowStreak += 1
+                if self.userPercent > 0.0 {
+                    let bestMaxEDR = targetDisplays().map { Double($0.maximumExtendedDynamicRangeColorComponentValue) }.max() ?? 1.0
+                    if bestMaxEDR <= self.edrPolicy.edrLowThreshold {
+                        self.edrLowStreak += 1
+                    } else {
+                        self.edrLowStreak = 0
+                    }
                 } else {
                     self.edrLowStreak = 0
                 }
@@ -394,8 +435,20 @@ final class BrightnessController {
         }
     }
 
+    private func shouldEvaluateAppPolicyOnIdle() -> Bool {
+        BrightnessController.shouldEvaluateAppPolicy(
+            scopeRaw: appPolicyScope.rawValue,
+            denylistBlocked: denylistBlocked,
+            hasDenylistSnapshot: denylistSnapshot != nil
+        )
+    }
+
+    static func shouldEvaluateAppPolicy(scopeRaw: Int, denylistBlocked: Bool, hasDenylistSnapshot: Bool) -> Bool {
+        scopeRaw == AppPolicyScope.apps.rawValue || denylistBlocked || hasDenylistSnapshot
+    }
+
     private func evaluateAppPolicyOverride() {
-        let frontmost = HDRAppList.frontmostAppInfo()
+        let frontmost = HDRAppList.frontmostAppInfoThrottled()
         let denylisted = HDRAppList.isBundleIDDenylisted(frontmost.bundleID)
         let decision = AppPolicy.decide(scope: appPolicyScope, frontmostDenylisted: denylisted)
 
@@ -584,6 +637,7 @@ final class BrightnessController {
             guard edrPolicyProfileID != id else { return }
             edrPolicyProfileID = id
             Settings.edrPolicyProfile = id
+            invalidateCapDetailsCacheOnMain()
         }
     }
     func setAppPolicyScope(_ scope: Int) {
@@ -676,6 +730,7 @@ final class BrightnessController {
         onMainSync {
             guardEnabled = enabled
             Settings.guardEnabled = enabled
+            invalidateCapDetailsCacheOnMain()
         }
     }
     func setGuardFactor(_ factor: Double) {
@@ -683,6 +738,7 @@ final class BrightnessController {
             let clamped = Swift.max(0.70, Swift.min(0.98, factor))
             guardFactor = clamped
             Settings.guardFactor = clamped
+            invalidateCapDetailsCacheOnMain()
         }
     }
 
@@ -695,11 +751,9 @@ final class BrightnessController {
     private func uiStateSnapshotOnMain() -> RuntimeUIState {
         let autoEnabled = ALSManager.shared.autoEnabled
         let mode: RuntimeControlMode = autoEnabled ? .auto : (enabled ? .manual : .off)
-        let cap = currentGammaCap()
+        let cap = currentGammaCapDetailsCachedOnMain().cap
         let effective = enabled ? BrightnessController.percent(forFactor: factor, cap: cap) : 0.0
         let blockedName: String? = (denylistBlocked && appPolicyFrontmostBundleID != "unknown") ? appPolicyFrontmostBundleID : nil
-        let appDiag = "scope=\(appPolicyScope.displayName), result=\(appPolicyResult), denylisted=\(appPolicyDenylisted ? "yes" : "no"), frontmost=\(appPolicyFrontmostBundleID)"
-        let hdrDiag = "gate=\(hdrLastGate), sampler=\(hdrLastSamplerStatus), enabled=\(hdrAwareEnabled ? "yes" : "no")"
         return RuntimeUIState(
             masterEnabled: enabled,
             mode: mode,
@@ -710,8 +764,8 @@ final class BrightnessController {
             tileVisibleNow: TileFeature.shared.isCurrentlyVisible,
             denylistBlocked: denylistBlocked,
             blockedAppName: blockedName,
-            appPolicyDiagnostics: appDiag,
-            experimentalHDRDiagnostics: hdrDiag
+            appPolicyDiagnostics: "",
+            experimentalHDRDiagnostics: ""
         )
     }
 }
