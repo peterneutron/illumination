@@ -10,17 +10,25 @@ final class Overlay: MTKView, MTKViewDelegate {
     private let colorSpace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)
 
     private var commandQueue: MTLCommandQueue?
+    private(set) var isOperational: Bool = false
 
     init(frame: CGRect, multiplyCompositing: Bool = false) {
-        super.init(frame: frame, device: MTLCreateSystemDefaultDevice())
+        let metalDevice = MTLCreateSystemDefaultDevice()
+        super.init(frame: frame, device: metalDevice)
 
-        guard let device else { fatalError("No Metal device available") }
+        guard let device = metalDevice else {
+            RuntimeDiagnostics.shared.report(.metalDeviceUnavailable, details: "EDR overlay disabled for this session.")
+            return
+        }
 
         autoResizeDrawable = false
         drawableSize = CGSize(width: 1, height: 1)
 
         commandQueue = device.makeCommandQueue()
-        precondition(commandQueue != nil, "Could not create command queue")
+        guard commandQueue != nil else {
+            RuntimeDiagnostics.shared.report(.metalCommandQueueUnavailable, details: "EDR overlay draw loop is unavailable.")
+            return
+        }
 
         delegate = self
         colorPixelFormat = .rgba16Float
@@ -39,10 +47,14 @@ final class Overlay: MTKView, MTKViewDelegate {
                 layer.compositingFilter = "multiply"
             }
         }
+        isOperational = true
     }
 
     required init(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        super.init(coder: coder)
+        RuntimeDiagnostics.shared.report(.unsupportedCoderInit, details: "Overlay NSCoder initialization used; overlay may be degraded.")
+        isPaused = true
+        enableSetNeedsDisplay = true
     }
 
     func screenUpdate(screen: NSScreen) {

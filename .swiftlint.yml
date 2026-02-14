@@ -1,0 +1,50 @@
+included:
+  - Illumination
+  - IlluminationTests
+  - IlluminationUITests
+
+excluded:
+  - build
+  - Illumination.xcodeproj
+
+opt_in_rules:
+  - force_unwrapping
+
+analyzer_rules: []
+
+disabled_rules:
+  - trailing_whitespace
+  - todo
+
+force_cast: error
+force_try: error
+
+file_length:
+  warning: 700
+  error: 900
+
+function_body_length:
+  warning: 80
+  error: 120
+
+type_body_length:
+  warning: 450
+  error: 800
+
+cyclomatic_complexity:
+  warning: 20
+  error: 30
+
+identifier_name:
+  min_length:
+    warning: 1
+  excluded:
+    - a
+    - p
+    - x
+    - y
+    - i
+
+line_length:
+  warning: 160
+  error: 220

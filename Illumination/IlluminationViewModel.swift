@@ -33,7 +33,7 @@ final class IlluminationViewModel: ObservableObject {
 
     // MARK: - Intents
     func setEnabled(_ on: Bool) {
-        UserDefaults.standard.set(on, forKey: "illumination.enabled")
+        Settings.masterEnabled = on
         controller.setEnabled(on)
         enabled = on
     }
@@ -131,6 +131,9 @@ final class IlluminationViewModel: ObservableObject {
         }
         let cp = ALSManager.shared.calibratorParams()
         lines.append(String(format: "Calibrator: a=%.5f, p=%.5f, xDark=%.5f", cp.a, cp.p, cp.xDark))
+        if let issue = RuntimeDiagnostics.shared.lastIssue {
+            lines.append("Runtime: \(issue)")
+        }
         return lines
     }
 

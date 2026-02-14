@@ -20,9 +20,11 @@
 		723564C72AC8C72E614A8061 /* HDRTile.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 49E679BF0F06968528066BEC /* HDRTile.mp4 */; };
 		7B7F9B2C526335411343E886 /* HDRAppList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8267E5395D52C35C2EF0B1F2 /* HDRAppList.swift */; };
 		9CF94A427570BA9F8DAA3572 /* IlluminationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C5B4AB118C68AC72B50BCD4 /* IlluminationUITests.swift */; };
+		A80CCD213EDC318906FB4CAF /* RuntimeDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97B220D70B5EA395C4708F1 /* RuntimeDiagnostics.swift */; };
 		ABB01C1BF8967F238883C4E6 /* Overlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D897A2CA1E637C998F7328B3 /* Overlay.swift */; };
 		BF1EE06C4CA4740389B7BAC2 /* HDRRegionSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E70B849C29B0F2F63A39CCE0 /* HDRRegionSampler.swift */; };
 		C28BDB81F5FB5B3A81378C74 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1D74E2B2ED87221EF7CAB1B3 /* Assets.xcassets */; };
+		C88F805B24B58A60C9AF1437 /* ALSComputation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A3FEAD7A9BCC7EE36D49C10 /* ALSComputation.swift */; };
 		D31DF05FF3F451407FE2FB7E /* OverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4320C584B2087058CD0FD62F /* OverlayWindow.swift */; };
 		D41C2B0EBDEACF5859BA22D9 /* MenuBarUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 775BC76C935D8068B602DBF2 /* MenuBarUI.swift */; };
 		E28CCD21E9B9316982057F3E /* IlluminationApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557AD4D677E272316445B950 /* IlluminationApp.swift */; };
@@ -64,7 +66,9 @@
 		7E7134CBB3BDA3D9FFC87EEE /* IlluminationUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IlluminationUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8267E5395D52C35C2EF0B1F2 /* HDRAppList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HDRAppList.swift; sourceTree = "<group>"; };
 		8729A23E9B7E3CD21C7616AE /* Illumination.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Illumination.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9A3FEAD7A9BCC7EE36D49C10 /* ALSComputation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ALSComputation.swift; sourceTree = "<group>"; };
 		B158BA0F8BEE47016176A427 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
+		B97B220D70B5EA395C4708F1 /* RuntimeDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeDiagnostics.swift; sourceTree = "<group>"; };
 		CAE4C7F9FDA51B1F1BB99350 /* DisplayStateProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayStateProbe.swift; sourceTree = "<group>"; };
 		D4D517F849D61F2B46F909FA /* IlluminationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IlluminationTests.swift; sourceTree = "<group>"; };
 		D897A2CA1E637C998F7328B3 /* Overlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Overlay.swift; sourceTree = "<group>"; };
@@ -78,6 +82,7 @@
 		0B96EB3B41F0011BB0CD1F14 /* Illumination */ = {
 			isa = PBXGroup;
 			children = (
+				9A3FEAD7A9BCC7EE36D49C10 /* ALSComputation.swift */,
 				F8FABC729ADCF702FE9C45D5 /* ALSManager.swift */,
 				1D74E2B2ED87221EF7CAB1B3 /* Assets.xcassets */,
 				620B31C8429296B8ABB8326E /* Brightness.swift */,
@@ -92,6 +97,7 @@
 				D897A2CA1E637C998F7328B3 /* Overlay.swift */,
 				4320C584B2087058CD0FD62F /* OverlayWindow.swift */,
 				71A7A514F0C1E871DAFAAF70 /* QuickActionButton.swift */,
+				B97B220D70B5EA395C4708F1 /* RuntimeDiagnostics.swift */,
 				B158BA0F8BEE47016176A427 /* Settings.swift */,
 				4BA9A734FD3BB5FCC4362B2A /* SystemInfo.swift */,
 				1473CDDE8339EB7F110637BE /* TileFeature.swift */,
@@ -256,6 +262,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C88F805B24B58A60C9AF1437 /* ALSComputation.swift in Sources */,
 				E64ADD19A4E4D1851B62CCE5 /* ALSManager.swift in Sources */,
 				50960829434847E113C16B43 /* Brightness.swift in Sources */,
 				164BC914D3D1FF70456182D2 /* DisplayStateProbe.swift in Sources */,
@@ -268,6 +275,7 @@
 				ABB01C1BF8967F238883C4E6 /* Overlay.swift in Sources */,
 				D31DF05FF3F451407FE2FB7E /* OverlayWindow.swift in Sources */,
 				659AA3BE3ABC0266952E1143 /* QuickActionButton.swift in Sources */,
+				A80CCD213EDC318906FB4CAF /* RuntimeDiagnostics.swift in Sources */,
 				070D2E82CBCD83A90B97AAFD /* Settings.swift in Sources */,
 				EFBF11B67E3CE37F846F72C5 /* SystemInfo.swift in Sources */,
 				4BC8ADC35577E9B3EF8EFAC0 /* TileFeature.swift in Sources */,

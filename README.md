@@ -39,6 +39,7 @@ This project uses a `Makefile` to automate the build process.
 
 - macOS with Xcode (26+ recommended) installed.
 - XcodeGen (`xcodegen`) installed and available in `PATH`.
+- SwiftLint (`swiftlint`) installed and available in `PATH` for lint/verify checks.
 - Clone the repository:
   ```bash
   git clone https://github.com/peterneutron/illumination.git
@@ -59,8 +60,21 @@ The Makefile now exposes explicit lanes for unsigned, development-signed, and di
 - `make export` – exports an `.app` from the latest archive using `ExportOptions.plist`.
 - `make package` – zips the exported app into `build/Illumination.zip`.
 - `make clean` – removes `./build`.
+- `make lint` – runs SwiftLint safety/style checks with project config.
+- `make test` – runs unit tests (`IlluminationTests`).
+- `make verify` – runs `xcodegen-check`, `lint`, `build`, and `test`.
 
 > The signing helper requires the Xcode command line tools and at least one Apple Development certificate in your login keychain.
+
+## Contributor Verification Checklist
+
+Before opening or merging a PR, run:
+
+1. `make xcodegen-check`
+2. `make build`
+3. `make test`
+4. `make lint` (requires `swiftlint`)
+5. `make verify` (full gate)
 
 ## Acknowledgments
 

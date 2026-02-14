@@ -55,20 +55,19 @@ struct LuxCalibrator: Codable {
     }
 
     // Simple persistence
-    private static let defaultsKey = "illumination.als.calibrator"
     static func load() -> LuxCalibrator {
-        if let data = UserDefaults.standard.data(forKey: defaultsKey),
+        if let data = Settings.alsCalibratorData,
            let c = try? JSONDecoder().decode(LuxCalibrator.self, from: data) {
             return c
         }
         return LuxCalibrator()
     }
     static func exists() -> Bool {
-        return UserDefaults.standard.data(forKey: defaultsKey) != nil
+        return Settings.alsCalibratorData != nil
     }
     func save() {
         if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: LuxCalibrator.defaultsKey)
+            Settings.alsCalibratorData = data
         }
     }
 }
@@ -86,7 +85,6 @@ private let kFixedPointShift = 20.0                // 12.20-ish fixed point
 private let kFixedPointDiv  = pow(2.0, kFixedPointShift) // 1,048,576.0
 private let kSentinelU32    = UInt32(Int32.max)    // 0x7FFFFFFF
 private let kSentinelGuard  = UInt32(0x7FFFFF00)   // treat near-top as saturated too
-private let kMaxPlausibleLux = 120_000.0           // sanity clamp (physical lux)
 private let kMaxDecodedX: Double = 2047.0          // ≈ INT32_MAX / 2^20, safe pre-sentinel ceiling (sensor-space counts)
 
 // MARK: - Final model: calibrated power law with xDark=0 and day-max relative blend
@@ -194,10 +192,8 @@ final class ALSManager {
 
 
     // Auto mode
-    private let profileKey = "illumination.als.profile" // legacy key kept for migration only
     private var profile: ALSProfile = .sunburst
     private(set) var autoEnabled: Bool = false
-    private let autoEnabledKey = "illumination.als.autoEnabled" // legacy key kept for migration only
     private var graceUntil: Date = .distantPast
     private var aboveCount = 0
     private var belowCount = 0
@@ -372,8 +368,7 @@ final class ALSManager {
                 }
             }
 
-            var L = (1.0 - w) * Lfit + w * Lrel
-            L = min(L, kMaxPlausibleLux)
+            let L = ALSComputation.blendedLux(fit: Lfit, relative: Lrel, weight: w)
 
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
@@ -420,8 +415,7 @@ final class ALSManager {
                     }
                 }
 
-                var L = (1.0 - w) * Lfit + w * Lrel
-                L = min(L, kMaxPlausibleLux)
+                let L = ALSComputation.blendedLux(fit: Lfit, relative: Lrel, weight: w)
 
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
@@ -621,22 +615,22 @@ final class ALSManager {
 
     // MARK: - Calibration helper
     struct CalibAnchor: Codable { let dx: Double; let lux: Double }
-    private let anchorAKey = "illumination.als.calib.anchorA"
-    private let anchorBKey = "illumination.als.calib.anchorB"
-    private func saveAnchor(_ a: CalibAnchor?, key: String) {
-        if let a = a, let data = try? JSONEncoder().encode(a) {
-            UserDefaults.standard.set(data, forKey: key)
+    private func saveAnchor(_ a: CalibAnchor?, isA: Bool) {
+        let data = a.flatMap { try? JSONEncoder().encode($0) }
+        if isA {
+            Settings.alsCalibAnchorAData = data
         } else {
-            UserDefaults.standard.removeObject(forKey: key)
+            Settings.alsCalibAnchorBData = data
         }
     }
-    private func loadAnchor(key: String) -> CalibAnchor? {
-        if let data = UserDefaults.standard.data(forKey: key), let a = try? JSONDecoder().decode(CalibAnchor.self, from: data) { return a }
+    private func loadAnchor(isA: Bool) -> CalibAnchor? {
+        let data = isA ? Settings.alsCalibAnchorAData : Settings.alsCalibAnchorBData
+        if let data, let a = try? JSONDecoder().decode(CalibAnchor.self, from: data) { return a }
         return nil
     }
-    func calibAnchorA() -> CalibAnchor? { loadAnchor(key: anchorAKey) }
-    func calibAnchorB() -> CalibAnchor? { loadAnchor(key: anchorBKey) }
-    func clearAnchors() { saveAnchor(nil, key: anchorAKey); saveAnchor(nil, key: anchorBKey) }
+    func calibAnchorA() -> CalibAnchor? { loadAnchor(isA: true) }
+    func calibAnchorB() -> CalibAnchor? { loadAnchor(isA: false) }
+    func clearAnchors() { saveAnchor(nil, isA: true); saveAnchor(nil, isA: false) }
     func setDarkFromCurrent() {
         guard let x = debugDecodedX else { return }
         // Only accept xDark when truly dark (near zero). Otherwise ignore to avoid corrupting Δx.
@@ -651,13 +645,13 @@ final class ALSManager {
         guard let x = debugDecodedX else { return }
         let dx = max(0.0, x - calibrator.xDark)
         guard dx > 1e-6 else { return }
-        saveAnchor(CalibAnchor(dx: dx, lux: lux), key: anchorAKey)
+        saveAnchor(CalibAnchor(dx: dx, lux: lux), isA: true)
     }
     func setAnchorBFromCurrent(lux: Double) {
         guard let x = debugDecodedX else { return }
         let dx = max(0.0, x - calibrator.xDark)
         guard dx > 1e-6 else { return }
-        saveAnchor(CalibAnchor(dx: dx, lux: lux), key: anchorBKey)
+        saveAnchor(CalibAnchor(dx: dx, lux: lux), isA: false)
     }
     func fitCalibrationFromAnchors() {
         guard let A = calibAnchorA(), let B = calibAnchorB() else { return }

@@ -18,7 +18,7 @@ APP_BUNDLE       := $(BUILD_DIR)/$(APP_NAME).app
 # Scripts
 SIGNING_RESOLVER_SCRIPT := ./scripts/resolve-signing.sh
 
-.PHONY: all release xcodegen xcodegen-check build devsigned archive export package clean
+.PHONY: all release xcodegen xcodegen-check lint test verify build devsigned archive export package clean
 
 all: build
 release: build
@@ -34,6 +34,23 @@ xcodegen:
 
 xcodegen-check:
 	@bash ./scripts/xcodegen-check.sh
+
+lint:
+	@if ! command -v swiftlint >/dev/null 2>&1; then \
+	  echo "error: swiftlint not found in PATH. Install SwiftLint to run lint checks."; \
+	  exit 1; \
+	fi
+	@swiftlint lint --config .swiftlint.yml --strict
+
+test:
+	@xcodebuild test \
+	  -project "$(PROJECT)" \
+	  -scheme "$(SCHEME)" \
+	  -destination 'platform=macOS' \
+	  CODE_SIGNING_ALLOWED=NO \
+	  -only-testing:IlluminationTests
+
+verify: xcodegen-check lint build test
 
 # -------- Lane A: unsigned local build (default) --------
 build: xcodegen $(BUILD_DIR_STAMP)

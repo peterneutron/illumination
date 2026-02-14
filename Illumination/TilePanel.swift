@@ -37,7 +37,10 @@ final class TilePanelController: NSWindowController {
         super.init(window: panel)
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) {
+        RuntimeDiagnostics.shared.report(.unsupportedCoderInit, details: "TilePanelController does not support NSCoder initialization.")
+        return nil
+    }
 
     func open() {
         guard let w = window else { return }

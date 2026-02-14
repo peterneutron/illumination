@@ -40,6 +40,12 @@ final class OverlayWindow: NSWindow {
 
     func addMetalOverlay(screen: NSScreen) {
         let ov = Overlay(frame: frame, multiplyCompositing: self.fullsize)
+        guard ov.isOperational else {
+            RuntimeDiagnostics.shared.report(.overlayCreationFailed, details: "Metal overlay could not be created.")
+            overlay = nil
+            contentView = NSView(frame: frame)
+            return
+        }
         ov.screenUpdate(screen: screen)
         ov.autoresizingMask = [.width, .height]
         overlay = ov
@@ -59,7 +65,10 @@ final class OverlayWindowController: NSWindowController, NSWindowDelegate {
         win.delegate = self
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) {
+        RuntimeDiagnostics.shared.report(.unsupportedCoderInit, details: "OverlayWindowController does not support NSCoder initialization.")
+        return nil
+    }
 
     func open(rect: NSRect) {
         guard let ow = window as? OverlayWindow else { return }

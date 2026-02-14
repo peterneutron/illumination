@@ -8,11 +8,6 @@ import AppKit
 final class TileFeature {
     static let shared = TileFeature()
 
-    // Persistence keys (tile-only)
-    private let keyEnabled = "illumination.overlay.hdrtile"
-    private let keyFullOpacity = "illumination.overlay.hdrtile.fullopacity"
-    private let keySize = "illumination.overlay.hdrtile.size"
-
     private var panelController: TilePanelController?
     private var observersInstalled = false
     private var masterSuspended = false
@@ -35,19 +30,25 @@ final class TileFeature {
 
     // MARK: - Public state
     var enabled: Bool {
-        get { UserDefaults.standard.object(forKey: keyEnabled) as? Bool ?? false }
-        set { UserDefaults.standard.set(newValue, forKey: keyEnabled); newValue ? enable() : disable() }
+        get { Settings.tileEnabled }
+        set {
+            Settings.tileEnabled = newValue
+            newValue ? enable() : disable()
+        }
     }
     // Fullscreen mode removed; tile is always Corner mode
     var fullOpacity: Bool {
-        get { UserDefaults.standard.object(forKey: keyFullOpacity) as? Bool ?? false }
-        set { UserDefaults.standard.set(newValue, forKey: keyFullOpacity); HDRTileManager.shared.setFullOpacity(newValue) }
+        get { Settings.tileFullOpacity }
+        set {
+            Settings.tileFullOpacity = newValue
+            HDRTileManager.shared.setFullOpacity(newValue)
+        }
     }
     var size: Int {
-        get { max(1, min(512, UserDefaults.standard.object(forKey: keySize) as? Int ?? 64)) }
+        get { Settings.tileSize }
         set {
             let s = max(1, min(512, newValue))
-            UserDefaults.standard.set(s, forKey: keySize)
+            Settings.tileSize = s
             HDRTileManager.shared.setTileSize(s)
             panelController?.updateFrame(tileSize: s, fullscreen: false)
         }
@@ -62,7 +63,10 @@ final class TileFeature {
     // MARK: - Internals
     private func ensurePanelIfNeeded() {
         if panelController == nil {
-            let sc = NSScreen.main ?? NSScreen.screens.first!
+            guard let sc = NSScreen.main ?? NSScreen.screens.first else {
+                RuntimeDiagnostics.shared.report(.tilePanelUnavailable, details: "No screen available to attach HDR tile panel.")
+                return
+            }
             panelController = TilePanelController(screen: sc)
         }
     }

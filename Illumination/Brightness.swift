@@ -165,17 +165,10 @@ final class BrightnessController {
     private var edrLowStreak: Int = 0
     private var edrRecoveryPendingRevert: Bool = false
     // Guard mode controls (user-configurable)
-    private let guardEnabledKey = "illumination.guard.enabled"
-    private let guardFactorKey = "illumination.guard.factor"
     private var guardEnabled: Bool = false
     private var guardFactor: Double = 0.90
     // Removed legacy AB (Auto-Brightness) heuristics
     // HDR-aware auto-duck
-    private let hdrAwareEnabledKey = "illumination.hdraware.enabled"
-    private let hdrAwareDuckPercentKey = "illumination.hdraware.duck.percent"
-    private let hdrAwareThresholdKey = "illumination.hdraware.threshold"
-    private let hdrRegionSamplerModeKey = "illumination.hdraware.regionsampler.mode" // 0=Off,1=On,2=Auto,3=Apps
-    private let hdrAwareFadeDurationKey = "illumination.hdraware.fade.duration"
     private var hdrAwareEnabled: Bool = false
     private var hdrAwareDuckPercent: Double = 50.0 // lower target percent during HDR
     private var hdrAwareThreshold: Double = 1.5    // EDR ratio threshold to consider HDR present
@@ -188,7 +181,6 @@ final class BrightnessController {
 
     init() {
         // Restore persisted state
-        let defaults = UserDefaults.standard
         let storedEnabled = Settings.masterEnabled
         let storedValue = Settings.brightnessFactor
         let maxCap = currentGammaCap()
@@ -202,7 +194,7 @@ final class BrightnessController {
         self.hdrAwareThreshold = Settings.hdrThreshold
         var storedMode = Settings.hdrRegionSamplerMode
         // Migration: remove "On" (1); map to "Apps" (3). Keep Auto (2) but hidden in UI.
-        if storedMode == 1 { storedMode = 3; defaults.set(storedMode, forKey: hdrRegionSamplerModeKey) }
+        if storedMode == 1 { storedMode = 3; Settings.hdrRegionSamplerMode = storedMode }
         self.hdrRegionSamplerMode = storedMode
         self.hdrDuckFadeDuration = Settings.hdrFadeDuration
         // Migrate: if previous value looked like percentage (e.g. > 2.0), map to factor
@@ -279,7 +271,7 @@ final class BrightnessController {
         self.factor = Swift.max(1.0, Swift.min(maxCap, factor))
         // Update user intent based on current cap
         self.userPercent = BrightnessController.percent(forFactor: self.factor, cap: maxCap)
-        UserDefaults.standard.set(self.factor, forKey: "illumination.brightness")
+        Settings.brightnessFactor = self.factor
         if enabled {
             technique.adjust(factor: Float(self.factor))
         }
@@ -296,7 +288,7 @@ final class BrightnessController {
         let cap = currentGammaCap()
         let f = 1.0 + (cap - 1.0) * (p / 100.0)
         self.factor = Swift.max(1.0, Swift.min(cap, f))
-        UserDefaults.standard.set(self.factor, forKey: "illumination.brightness")
+        Settings.brightnessFactor = self.factor
         if enabled {
             technique.adjust(factor: Float(self.factor))
         }
@@ -492,8 +484,6 @@ final class BrightnessController {
     }
 
     // MARK: - Overlay controls
-    private let overlayFullsizeKey = "illumination.overlay.fullsize"
-    private let overlayFPSKey = "illumination.overlay.fps"
     func overlayFullsizeEnabled() -> Bool { Settings.overlayFullsize }
     func setOverlayFullsize(_ enabled: Bool) {
         Settings.overlayFullsize = enabled
@@ -570,12 +560,12 @@ final class BrightnessController {
     }
     func setGuardEnabled(_ enabled: Bool) {
         guardEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: guardEnabledKey)
+        Settings.guardEnabled = enabled
     }
     func setGuardFactor(_ factor: Double) {
         let clamped = Swift.max(0.70, Swift.min(0.98, factor))
         guardFactor = clamped
-        UserDefaults.standard.set(clamped, forKey: guardFactorKey)
+        Settings.guardFactor = clamped
     }
 }
     // MARK: - HDR ducking engine

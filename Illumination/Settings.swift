@@ -1,119 +1,191 @@
 import Foundation
 
 enum Settings {
-    // ALS tuning
-    private static let entryMinKey = "illumination.als.entry.minPercent"
-    private static let entryEnvelopeKey = "illumination.als.entry.envelopeSeconds"
-    private static let maxSlopeKey = "illumination.als.maxPercentPerSecond"
-    private static let minOnKey = "illumination.als.minOnSeconds"
-    private static let minOffKey = "illumination.als.minOffSeconds"
-    // ALS modeling (no exposed tuners in final model)
+    enum Key: String, CaseIterable {
+        case entryMinPercent = "illumination.als.entry.minPercent"
+        case entryEnvelopeSeconds = "illumination.als.entry.envelopeSeconds"
+        case maxPercentPerSecond = "illumination.als.maxPercentPerSecond"
+        case minOnSeconds = "illumination.als.minOnSeconds"
+        case minOffSeconds = "illumination.als.minOffSeconds"
+
+        case masterEnabled = "illumination.enabled"
+        case brightnessFactor = "illumination.brightness"
+
+        case guardEnabled = "illumination.guard.enabled"
+        case guardFactor = "illumination.guard.factor"
+
+        case overlayFullsize = "illumination.overlay.fullsize"
+        case overlayFPS = "illumination.overlay.fps"
+
+        case tileEnabled = "illumination.overlay.hdrtile"
+        case tileFullOpacity = "illumination.overlay.hdrtile.fullopacity"
+        case tileSize = "illumination.overlay.hdrtile.size"
+
+        case hdrAwareEnabled = "illumination.hdraware.enabled"
+        case hdrAwareDuckPercent = "illumination.hdraware.duck.percent"
+        case hdrAwareThreshold = "illumination.hdraware.threshold"
+        case hdrRegionSamplerMode = "illumination.hdraware.regionsampler.mode"
+        case hdrAwareFadeDuration = "illumination.hdraware.fade.duration"
+
+        case alsProfile = "illumination.als.profile"
+        case alsAutoEnabled = "illumination.als.autoEnabled"
+        case luxStepMode = "illumination.ui.lux.step"
+
+        case alsCalibrator = "illumination.als.calibrator"
+        case alsCalibAnchorA = "illumination.als.calib.anchorA"
+        case alsCalibAnchorB = "illumination.als.calib.anchorB"
+    }
+
+    private static var store: UserDefaults = .standard
+
+    static func useStore(_ defaults: UserDefaults) {
+        store = defaults
+    }
+
+    static func resetStore() {
+        store = .standard
+    }
+
+    private static func clamp(_ value: Double, min minValue: Double, max maxValue: Double) -> Double {
+        max(minValue, min(maxValue, value))
+    }
+
+    private static func clamp(_ value: Int, min minValue: Int, max maxValue: Int) -> Int {
+        max(minValue, min(maxValue, value))
+    }
+
+    private static func bool(_ key: Key, default defaultValue: Bool) -> Bool {
+        store.object(forKey: key.rawValue) as? Bool ?? defaultValue
+    }
+
+    private static func double(_ key: Key, default defaultValue: Double) -> Double {
+        store.object(forKey: key.rawValue) as? Double ?? defaultValue
+    }
+
+    private static func int(_ key: Key, default defaultValue: Int) -> Int {
+        store.object(forKey: key.rawValue) as? Int ?? defaultValue
+    }
+
+    static func data(for key: Key) -> Data? {
+        store.data(forKey: key.rawValue)
+    }
+
+    static func set(_ data: Data?, for key: Key) {
+        if let data {
+            store.set(data, forKey: key.rawValue)
+        } else {
+            store.removeObject(forKey: key.rawValue)
+        }
+    }
 
     static var entryMinPercent: Double {
-        get { UserDefaults.standard.object(forKey: entryMinKey) as? Double ?? 1.0 }
-        set { UserDefaults.standard.set(max(0.0, min(10.0, newValue)), forKey: entryMinKey) }
+        get { double(.entryMinPercent, default: 1.0) }
+        set { store.set(clamp(newValue, min: 0.0, max: 10.0), forKey: Key.entryMinPercent.rawValue) }
     }
     static var entryEnvelopeSeconds: Double {
-        get { UserDefaults.standard.object(forKey: entryEnvelopeKey) as? Double ?? 1.5 }
-        set { UserDefaults.standard.set(max(0.1, min(5.0, newValue)), forKey: entryEnvelopeKey) }
+        get { double(.entryEnvelopeSeconds, default: 1.5) }
+        set { store.set(clamp(newValue, min: 0.1, max: 5.0), forKey: Key.entryEnvelopeSeconds.rawValue) }
     }
     static var maxPercentPerSecond: Double {
-        get { UserDefaults.standard.object(forKey: maxSlopeKey) as? Double ?? 50.0 }
-        set { UserDefaults.standard.set(max(5.0, min(200.0, newValue)), forKey: maxSlopeKey) }
+        get { double(.maxPercentPerSecond, default: 50.0) }
+        set { store.set(clamp(newValue, min: 5.0, max: 200.0), forKey: Key.maxPercentPerSecond.rawValue) }
     }
     static var minOnSeconds: Double {
-        get { UserDefaults.standard.object(forKey: minOnKey) as? Double ?? 1.5 }
-        set { UserDefaults.standard.set(max(0.0, min(10.0, newValue)), forKey: minOnKey) }
+        get { double(.minOnSeconds, default: 1.5) }
+        set { store.set(clamp(newValue, min: 0.0, max: 10.0), forKey: Key.minOnSeconds.rawValue) }
     }
     static var minOffSeconds: Double {
-        get { UserDefaults.standard.object(forKey: minOffKey) as? Double ?? 1.5 }
-        set { UserDefaults.standard.set(max(0.0, min(10.0, newValue)), forKey: minOffKey) }
+        get { double(.minOffSeconds, default: 1.5) }
+        set { store.set(clamp(newValue, min: 0.0, max: 10.0), forKey: Key.minOffSeconds.rawValue) }
     }
-    // Master + brightness
-    private static let masterEnabledKey = "illumination.enabled"
-    private static let brightnessFactorKey = "illumination.brightness"
+
     static var masterEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: masterEnabledKey) as? Bool ?? false }
-        set { UserDefaults.standard.set(newValue, forKey: masterEnabledKey) }
+        get { bool(.masterEnabled, default: false) }
+        set { store.set(newValue, forKey: Key.masterEnabled.rawValue) }
     }
     static var brightnessFactor: Double? {
-        get { UserDefaults.standard.object(forKey: brightnessFactorKey) as? Double }
-        set {
-            if let v = newValue { UserDefaults.standard.set(v, forKey: brightnessFactorKey) }
-            else { UserDefaults.standard.removeObject(forKey: brightnessFactorKey) }
-        }
+        get { store.object(forKey: Key.brightnessFactor.rawValue) as? Double }
+        set { newValue.map { store.set($0, forKey: Key.brightnessFactor.rawValue) } ?? store.removeObject(forKey: Key.brightnessFactor.rawValue) }
     }
 
-    // Guard
-    private static let guardEnabledKey = "illumination.guard.enabled"
-    private static let guardFactorKey = "illumination.guard.factor"
     static var guardEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: guardEnabledKey) as? Bool ?? false }
-        set { UserDefaults.standard.set(newValue, forKey: guardEnabledKey) }
+        get { bool(.guardEnabled, default: false) }
+        set { store.set(newValue, forKey: Key.guardEnabled.rawValue) }
     }
     static var guardFactor: Double {
-        get { UserDefaults.standard.object(forKey: guardFactorKey) as? Double ?? 0.90 }
-        set { UserDefaults.standard.set(newValue, forKey: guardFactorKey) }
+        get { double(.guardFactor, default: 0.90) }
+        set { store.set(clamp(newValue, min: 0.70, max: 0.98), forKey: Key.guardFactor.rawValue) }
     }
 
-    // Overlay
-    private static let overlayFullsizeKey = "illumination.overlay.fullsize"
-    private static let overlayFPSKey = "illumination.overlay.fps"
     static var overlayFullsize: Bool {
-        get { UserDefaults.standard.object(forKey: overlayFullsizeKey) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: overlayFullsizeKey) }
+        get { bool(.overlayFullsize, default: true) }
+        set { store.set(newValue, forKey: Key.overlayFullsize.rawValue) }
     }
     static var overlayFPS: Int {
-        get { UserDefaults.standard.object(forKey: overlayFPSKey) as? Int ?? 30 }
-        set { UserDefaults.standard.set(max(5, min(120, newValue)), forKey: overlayFPSKey) }
+        get { int(.overlayFPS, default: 30) }
+        set { store.set(clamp(newValue, min: 5, max: 120), forKey: Key.overlayFPS.rawValue) }
     }
 
-    // HDR
-    private static let hdrAwareEnabledKey = "illumination.hdraware.enabled"
-    private static let hdrAwareDuckPercentKey = "illumination.hdraware.duck.percent"
-    private static let hdrAwareThresholdKey = "illumination.hdraware.threshold"
-    private static let hdrRegionSamplerModeKey = "illumination.hdraware.regionsampler.mode"
-    private static let hdrAwareFadeDurationKey = "illumination.hdraware.fade.duration"
+    static var tileEnabled: Bool {
+        get { bool(.tileEnabled, default: false) }
+        set { store.set(newValue, forKey: Key.tileEnabled.rawValue) }
+    }
+    static var tileFullOpacity: Bool {
+        get { bool(.tileFullOpacity, default: false) }
+        set { store.set(newValue, forKey: Key.tileFullOpacity.rawValue) }
+    }
+    static var tileSize: Int {
+        get { int(.tileSize, default: 64) }
+        set { store.set(clamp(newValue, min: 1, max: 512), forKey: Key.tileSize.rawValue) }
+    }
+
     static var hdrAwareEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: hdrAwareEnabledKey) as? Bool ?? false }
-        set { UserDefaults.standard.set(newValue, forKey: hdrAwareEnabledKey) }
+        get { bool(.hdrAwareEnabled, default: false) }
+        set { store.set(newValue, forKey: Key.hdrAwareEnabled.rawValue) }
     }
     static var hdrDuckPercent: Double {
-        get { UserDefaults.standard.object(forKey: hdrAwareDuckPercentKey) as? Double ?? 50.0 }
-        set { UserDefaults.standard.set(max(0.0, min(100.0, newValue)), forKey: hdrAwareDuckPercentKey) }
+        get { double(.hdrAwareDuckPercent, default: 50.0) }
+        set { store.set(clamp(newValue, min: 0.0, max: 100.0), forKey: Key.hdrAwareDuckPercent.rawValue) }
     }
     static var hdrThreshold: Double {
-        get { UserDefaults.standard.object(forKey: hdrAwareThresholdKey) as? Double ?? 1.5 }
-        set { UserDefaults.standard.set(max(1.1, min(3.0, newValue)), forKey: hdrAwareThresholdKey) }
+        get { double(.hdrAwareThreshold, default: 1.5) }
+        set { store.set(clamp(newValue, min: 1.1, max: 3.0), forKey: Key.hdrAwareThreshold.rawValue) }
     }
     static var hdrRegionSamplerMode: Int {
-        get { UserDefaults.standard.object(forKey: hdrRegionSamplerModeKey) as? Int ?? 0 }
-        set { UserDefaults.standard.set(max(0, min(3, newValue)), forKey: hdrRegionSamplerModeKey) }
+        get { int(.hdrRegionSamplerMode, default: 0) }
+        set { store.set(clamp(newValue, min: 0, max: 3), forKey: Key.hdrRegionSamplerMode.rawValue) }
     }
     static var hdrFadeDuration: Double {
-        get { UserDefaults.standard.object(forKey: hdrAwareFadeDurationKey) as? Double ?? 0.25 }
-        set { UserDefaults.standard.set(max(0.05, min(2.0, newValue)), forKey: hdrAwareFadeDurationKey) }
+        get { double(.hdrAwareFadeDuration, default: 0.25) }
+        set { store.set(clamp(newValue, min: 0.05, max: 2.0), forKey: Key.hdrAwareFadeDuration.rawValue) }
     }
 
-    // ALS core
-    private static let alsProfileKey = "illumination.als.profile"
-    private static let alsAutoEnabledKey = "illumination.als.autoEnabled"
     static var alsProfileRaw: String? {
-        get { UserDefaults.standard.string(forKey: alsProfileKey) }
-        set {
-            if let v = newValue { UserDefaults.standard.set(v, forKey: alsProfileKey) }
-            else { UserDefaults.standard.removeObject(forKey: alsProfileKey) }
-        }
+        get { store.string(forKey: Key.alsProfile.rawValue) }
+        set { newValue.map { store.set($0, forKey: Key.alsProfile.rawValue) } ?? store.removeObject(forKey: Key.alsProfile.rawValue) }
     }
     static var alsAutoEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: alsAutoEnabledKey) as? Bool ?? false }
-        set { UserDefaults.standard.set(newValue, forKey: alsAutoEnabledKey) }
+        get { bool(.alsAutoEnabled, default: false) }
+        set { store.set(newValue, forKey: Key.alsAutoEnabled.rawValue) }
     }
 
-    // UI: Lux label steps
-    private static let luxStepModeKey = "illumination.ui.lux.step" // 0=1lx,1=0.1k,2=0.5k,3=1k
     static var luxStepMode: Int {
-        get { max(0, min(3, UserDefaults.standard.object(forKey: luxStepModeKey) as? Int ?? 2)) }
-        set { UserDefaults.standard.set(max(0, min(3, newValue)), forKey: luxStepModeKey) }
+        get { clamp(int(.luxStepMode, default: 2), min: 0, max: 3) }
+        set { store.set(clamp(newValue, min: 0, max: 3), forKey: Key.luxStepMode.rawValue) }
+    }
+
+    static var alsCalibratorData: Data? {
+        get { data(for: .alsCalibrator) }
+        set { set(newValue, for: .alsCalibrator) }
+    }
+
+    static var alsCalibAnchorAData: Data? {
+        get { data(for: .alsCalibAnchorA) }
+        set { set(newValue, for: .alsCalibAnchorA) }
+    }
+
+    static var alsCalibAnchorBData: Data? {
+        get { data(for: .alsCalibAnchorB) }
+        set { set(newValue, for: .alsCalibAnchorB) }
     }
 }
