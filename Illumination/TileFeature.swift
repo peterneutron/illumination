@@ -17,8 +17,12 @@ final class TileFeature {
         // Ensure asset availability is scanned at startup
         HDRTileManager.shared.scanAssetAvailability()
         installObservers()
-        // If tile is enabled on launch, fully enable it (attach + present)
-        if enabled { enable() }
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        // Only bootstrap tile visuals when master is on and not under XCTest.
+        // Keep persisted tile preference untouched for later restore.
+        if enabled && Settings.masterEnabled && !isRunningTests {
+            enable()
+        }
     }
 
     private func installObservers() {
