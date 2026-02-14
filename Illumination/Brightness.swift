@@ -179,6 +179,9 @@ final class BrightnessController {
     private let hdrDuckEngine = HDRDuckEngine()
     private var hdrDuckFadeDuration: Double = 0.25 // seconds
     private let hdrSampler = HDRRegionSampler()
+    private var hdrLastFrontmostBundleID: String = "unknown"
+    private var hdrLastMatch: Bool = false
+    private var hdrLastGate: String = "Off"
 
     private func onMainSync<T>(_ body: () -> T) -> T {
         if Thread.isMainThread { return body() }
@@ -418,7 +421,8 @@ final class BrightnessController {
                 let newFactor = BrightnessController.factor(forPercent: self.userPercent, cap: cap)
                 var effective = newFactor
                 // HDR-aware auto-duck (driven by detection mode)
-                if self.hdrRegionSamplerModeValue() != 0 {
+                let hdrMode = self.hdrRegionSamplerModeValue()
+                if hdrMode != 0 {
                     if self.isHDRContentLikely(bestRatioHint: details.bestRatio) {
                         self.hdrActiveStreak = min(10, self.hdrActiveStreak + 1)
                         self.hdrInactiveStreak = 0
@@ -437,6 +441,11 @@ final class BrightnessController {
                         let duckTarget = BrightnessController.factor(forPercent: self.hdrAwareDuckPercent, cap: cap)
                         effective = (1.0 - self.hdrDuckEngine.duckLevel) * effective + self.hdrDuckEngine.duckLevel * duckTarget
                     }
+                } else {
+                    let frontmost = HDRAppList.frontmostAppInfo()
+                    self.hdrLastFrontmostBundleID = frontmost.bundleID ?? "unknown"
+                    self.hdrLastMatch = false
+                    self.hdrLastGate = "Off"
                 }
                 if !self.hdrDuckEngine.isAnimating {
                     if abs(effective - self.factor) > 0.0001 {
@@ -595,33 +604,50 @@ final class BrightnessController {
     }
 
     private func isHDRContentLikely(bestRatioHint: Double) -> Bool {
+        _ = bestRatioHint
         // Use region sampler based on mode; gate by app list in Auto/Apps.
         let mode = hdrRegionSamplerModeValue()
+        let frontmost = HDRAppList.frontmostAppInfo()
+        let matched = HDRAppList.isBundleIDEnabled(frontmost.bundleID)
+        hdrLastFrontmostBundleID = frontmost.bundleID ?? "unknown"
+        hdrLastMatch = matched
+
         // Start/stop sampler based on mode/app (Auto only)
         let mainDisplay = NSScreen.main?.displayId ?? 0
-        let shouldSample: Bool = {
-            if mode == 2 { return HDRAppList.isFrontmostHDRApp() }
-            return false
-        }()
+        let shouldSample = (mode == 2) && matched
         if shouldSample, mainDisplay != 0 {
             hdrSampler.start(displayID: mainDisplay)
         } else {
             hdrSampler.stop()
         }
-        switch mode {
-        case 0: // Off
-            return false
-        case 2: // Auto (app-gated + sampler evidence) [Debug/Experimental]
-            return HDRAppList.isFrontmostHDRApp() && hdrSampler.hdrPresent
-        case 3: // Apps (app-gated only)
-            return HDRAppList.isFrontmostHDRApp()
-        default:
-            return false
-        }
+
+        let gate = BrightnessController.hdrGateDecision(mode: mode, appMatched: matched, samplerHDRPresent: hdrSampler.hdrPresent)
+        hdrLastGate = gate.gate
+        return gate.allowed
     }
 
     static func modeName(_ mode: Int) -> String {
         switch mode { case 2: return "Auto"; case 3: return "Apps"; default: return "Off" }
+    }
+
+    static func hdrGateDecision(mode: Int, appMatched: Bool, samplerHDRPresent: Bool) -> (allowed: Bool, gate: String) {
+        switch mode {
+        case 0:
+            return (false, "Off")
+        case 2:
+            if !appMatched { return (false, "Auto blocked") }
+            if samplerHDRPresent { return (true, "Auto allowed") }
+            return (false, "Auto blocked")
+        case 3:
+            if appMatched { return (true, "Apps allowed") }
+            return (false, "Apps blocked")
+        default:
+            return (false, "Off")
+        }
+    }
+
+    func hdrDetectionDiagnostics() -> (frontmostBundleID: String, matched: Bool, gate: String) {
+        onMainSync { (hdrLastFrontmostBundleID, hdrLastMatch, hdrLastGate) }
     }
     func setGuardEnabled(_ enabled: Bool) {
         onMainSync {

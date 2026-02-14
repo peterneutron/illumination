@@ -104,6 +104,116 @@ struct IlluminationTests {
         #expect(floorBound == 1.0)
     }
 
+    @Test("HDR app registry seeds once and remains stable")
+    func hdrAppRegistrySeedAndStability() {
+        let suiteName = "IlluminationTests.HDRAppSeed"
+        guard let suite = UserDefaults(suiteName: suiteName) else {
+            #expect(Bool(false))
+            return
+        }
+        suite.removePersistentDomain(forName: suiteName)
+        Settings.useStore(suite)
+        defer {
+            Settings.resetStore()
+            suite.removePersistentDomain(forName: suiteName)
+        }
+
+        let first = HDRAppList.allEntries()
+        let second = HDRAppList.allEntries()
+        #expect(first.count == second.count)
+        #expect(first.count >= 6)
+        #expect(Set(first.map(\.bundleID)).count == first.count)
+    }
+
+    @Test("HDR app matching normalizes and respects enabled/removed states")
+    func hdrAppMatchingNormalizationAndState() {
+        let suiteName = "IlluminationTests.HDRAppMatch"
+        guard let suite = UserDefaults(suiteName: suiteName) else {
+            #expect(Bool(false))
+            return
+        }
+        suite.removePersistentDomain(forName: suiteName)
+        Settings.useStore(suite)
+        defer {
+            Settings.resetStore()
+            suite.removePersistentDomain(forName: suiteName)
+        }
+
+        HDRAppList.addOrEnable(bundleID: "COM.TEST.HDRAPP", displayName: "Test HDR App")
+        #expect(HDRAppList.isBundleIDEnabled("com.test.hdrapp"))
+        #expect(HDRAppList.isBundleIDEnabled("COM.TEST.HDRAPP"))
+
+        HDRAppList.setEnabled(bundleID: "com.test.hdrapp", isEnabled: false)
+        #expect(HDRAppList.isBundleIDEnabled("com.test.hdrapp") == false)
+
+        HDRAppList.removeUserEntry(bundleID: "com.test.hdrapp")
+        #expect(HDRAppList.isBundleIDEnabled("com.test.hdrapp") == false)
+    }
+
+    @Test("Corrupt HDR app registry payload falls back safely")
+    func hdrAppRegistryCorruptFallback() {
+        let suiteName = "IlluminationTests.HDRAppCorrupt"
+        guard let suite = UserDefaults(suiteName: suiteName) else {
+            #expect(Bool(false))
+            return
+        }
+        suite.removePersistentDomain(forName: suiteName)
+        Settings.useStore(suite)
+        defer {
+            Settings.resetStore()
+            suite.removePersistentDomain(forName: suiteName)
+        }
+
+        Settings.hdrAppRegistryData = Data([0x01, 0x02, 0x03])
+        let entries = HDRAppList.allEntries()
+        #expect(entries.count >= 6)
+        #expect(HDRAppList.isBundleIDEnabled("com.apple.photos"))
+    }
+
+    @Test("HDR detection gate semantics are deterministic")
+    func hdrDetectionGateSemantics() {
+        let off = BrightnessController.hdrGateDecision(mode: 0, appMatched: true, samplerHDRPresent: true)
+        #expect(off.allowed == false)
+        #expect(off.gate == "Off")
+
+        let appsBlocked = BrightnessController.hdrGateDecision(mode: 3, appMatched: false, samplerHDRPresent: true)
+        #expect(appsBlocked.allowed == false)
+        #expect(appsBlocked.gate == "Apps blocked")
+
+        let appsAllowed = BrightnessController.hdrGateDecision(mode: 3, appMatched: true, samplerHDRPresent: false)
+        #expect(appsAllowed.allowed)
+        #expect(appsAllowed.gate == "Apps allowed")
+
+        let autoBlocked = BrightnessController.hdrGateDecision(mode: 2, appMatched: true, samplerHDRPresent: false)
+        #expect(autoBlocked.allowed == false)
+        #expect(autoBlocked.gate == "Auto blocked")
+
+        let autoAllowed = BrightnessController.hdrGateDecision(mode: 2, appMatched: true, samplerHDRPresent: true)
+        #expect(autoAllowed.allowed)
+        #expect(autoAllowed.gate == "Auto allowed")
+    }
+
+    @Test("Adding duplicate HDR app is idempotent")
+    func hdrAppDuplicateAddIdempotent() {
+        let suiteName = "IlluminationTests.HDRAppIdempotent"
+        guard let suite = UserDefaults(suiteName: suiteName) else {
+            #expect(Bool(false))
+            return
+        }
+        suite.removePersistentDomain(forName: suiteName)
+        Settings.useStore(suite)
+        defer {
+            Settings.resetStore()
+            suite.removePersistentDomain(forName: suiteName)
+        }
+
+        HDRAppList.addOrEnable(bundleID: "com.test.idempotent", displayName: "Idempotent")
+        HDRAppList.addOrEnable(bundleID: "COM.TEST.IDEMPOTENT", displayName: "Idempotent")
+        let entries = HDRAppList.allEntries().filter { $0.bundleID.lowercased() == "com.test.idempotent" }
+        #expect(entries.count == 1)
+        #expect(entries.first?.isEnabled == true)
+    }
+
     @Test("ALS decode handles malformed and sentinel inputs")
     func alsDecodeRobustness() {
         let negative = ALSComputation.decodeAmbientBrightnessSample(raw: NSNumber(value: -1))

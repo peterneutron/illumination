@@ -34,6 +34,7 @@ enum Settings {
         case alsCalibrator = "illumination.als.calibrator"
         case alsCalibAnchorA = "illumination.als.calib.anchorA"
         case alsCalibAnchorB = "illumination.als.calib.anchorB"
+        case hdrAppRegistry = "illumination.hdraware.app.registry"
     }
 
     private static var store: UserDefaults = .standard
@@ -187,5 +188,10 @@ enum Settings {
     static var alsCalibAnchorBData: Data? {
         get { data(for: .alsCalibAnchorB) }
         set { set(newValue, for: .alsCalibAnchorB) }
+    }
+
+    static var hdrAppRegistryData: Data? {
+        get { data(for: .hdrAppRegistry) }
+        set { set(newValue, for: .hdrAppRegistry) }
     }
 }

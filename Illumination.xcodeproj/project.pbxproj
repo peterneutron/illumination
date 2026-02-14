@@ -16,6 +16,7 @@
 		50960829434847E113C16B43 /* Brightness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 620B31C8429296B8ABB8326E /* Brightness.swift */; };
 		5A836BD625D4B8B62D1B58FC /* TilePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2226CFD2B0B73C68FCC225AC /* TilePanel.swift */; };
 		659AA3BE3ABC0266952E1143 /* QuickActionButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71A7A514F0C1E871DAFAAF70 /* QuickActionButton.swift */; };
+		6876DF72D4FFAA2D06AF8662 /* InstalledAppDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880D0AA64BEF56E9CEF4B9D9 /* InstalledAppDiscovery.swift */; };
 		6DE6B213C1ED237345718F2B /* IlluminationUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5940956163CE8553D3BC227 /* IlluminationUITestsLaunchTests.swift */; };
 		723564C72AC8C72E614A8061 /* HDRTile.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 49E679BF0F06968528066BEC /* HDRTile.mp4 */; };
 		7B7F9B2C526335411343E886 /* HDRAppList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8267E5395D52C35C2EF0B1F2 /* HDRAppList.swift */; };
@@ -66,6 +67,7 @@
 		7E7134CBB3BDA3D9FFC87EEE /* IlluminationUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IlluminationUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8267E5395D52C35C2EF0B1F2 /* HDRAppList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HDRAppList.swift; sourceTree = "<group>"; };
 		8729A23E9B7E3CD21C7616AE /* Illumination.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Illumination.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		880D0AA64BEF56E9CEF4B9D9 /* InstalledAppDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstalledAppDiscovery.swift; sourceTree = "<group>"; };
 		9A3FEAD7A9BCC7EE36D49C10 /* ALSComputation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ALSComputation.swift; sourceTree = "<group>"; };
 		B158BA0F8BEE47016176A427 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		B97B220D70B5EA395C4708F1 /* RuntimeDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeDiagnostics.swift; sourceTree = "<group>"; };
@@ -93,6 +95,7 @@
 				FEFBC9390DF31164CC4CD848 /* HDRTile.swift */,
 				557AD4D677E272316445B950 /* IlluminationApp.swift */,
 				5E658D221641B97F765D8A8A /* IlluminationViewModel.swift */,
+				880D0AA64BEF56E9CEF4B9D9 /* InstalledAppDiscovery.swift */,
 				775BC76C935D8068B602DBF2 /* MenuBarUI.swift */,
 				D897A2CA1E637C998F7328B3 /* Overlay.swift */,
 				4320C584B2087058CD0FD62F /* OverlayWindow.swift */,
@@ -271,6 +274,7 @@
 				0B0BFBFF0F6A215713F94D5A /* HDRTile.swift in Sources */,
 				E28CCD21E9B9316982057F3E /* IlluminationApp.swift in Sources */,
 				33609D1E794510920DB10250 /* IlluminationViewModel.swift in Sources */,
+				6876DF72D4FFAA2D06AF8662 /* InstalledAppDiscovery.swift in Sources */,
 				D41C2B0EBDEACF5859BA22D9 /* MenuBarUI.swift in Sources */,
 				ABB01C1BF8967F238883C4E6 /* Overlay.swift in Sources */,
 				D31DF05FF3F451407FE2FB7E /* OverlayWindow.swift in Sources */,

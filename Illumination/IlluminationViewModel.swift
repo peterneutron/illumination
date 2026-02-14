@@ -11,6 +11,9 @@ final class IlluminationViewModel: ObservableObject {
     @Published var alsAutoEnabled: Bool = false
     @Published var alsAvailable: Bool = ALSManager.shared.available
     @Published var edrUnsupportedConfirmed: Bool = false
+    @Published var appPickerQuery: String = ""
+    @Published private(set) var installedApps: [InstalledHDRApp] = []
+    @Published private(set) var appPickerLoading: Bool = false
 
     private let controller = BrightnessController.shared
     private var timer: Timer?
@@ -137,6 +140,10 @@ final class IlluminationViewModel: ObservableObject {
         }
         let cp = ALSManager.shared.calibratorParams()
         lines.append(String(format: "Calibrator: a=%.5f, p=%.5f, xDark=%.5f", cp.a, cp.p, cp.xDark))
+        let detection = controller.hdrDetectionDiagnostics()
+        lines.append("App Detection Frontmost: \(detection.frontmostBundleID)")
+        lines.append("App Detection Match: \(detection.matched ? "matched" : "unmatched")")
+        lines.append("App Detection Gate: \(detection.gate)")
         if let issue = RuntimeDiagnostics.shared.lastIssue {
             lines.append("Runtime: \(issue)")
         }
@@ -235,6 +242,71 @@ final class IlluminationViewModel: ObservableObject {
     func setTileFullOpacity(_ on: Bool) { TileFeature.shared.fullOpacity = on; objectWillChange.send() }
     var tileSize: Int { TileFeature.shared.size }
     func setTileSize(_ px: Int) { TileFeature.shared.size = px; objectWillChange.send() }
+
+    var hdrManagedApps: [HDRAppEntry] { HDRAppList.allEntries() }
+
+    var canAddFrontmostHDRApp: Bool {
+        HDRAppList.frontmostAppInfo().bundleID != nil
+    }
+
+    var addFrontmostDisabledReason: String {
+        if canAddFrontmostHDRApp { return "" }
+        return "Frontmost app has no bundle identifier."
+    }
+
+    var frontmostAppDisplayLabel: String {
+        let info = HDRAppList.frontmostAppInfo()
+        if let name = info.displayName, !name.isEmpty { return name }
+        if let bundleID = info.bundleID, !bundleID.isEmpty { return bundleID }
+        return "Unavailable"
+    }
+
+    func addFrontmostHDRApp() {
+        let info = HDRAppList.frontmostAppInfo()
+        guard let bundleID = info.bundleID else { return }
+        HDRAppList.addOrEnable(bundleID: bundleID, displayName: info.displayName)
+        objectWillChange.send()
+    }
+
+    func setHDRAppEnabled(bundleID: String, enabled: Bool) {
+        HDRAppList.setEnabled(bundleID: bundleID, isEnabled: enabled)
+        objectWillChange.send()
+    }
+
+    func removeHDRApp(bundleID: String) {
+        HDRAppList.removeUserEntry(bundleID: bundleID)
+        objectWillChange.send()
+    }
+
+    func resetHDRAppDefaults() {
+        HDRAppList.resetDefaults(keepUserAdded: true)
+        objectWillChange.send()
+    }
+
+    func addHDRApp(bundleID: String, displayName: String?) {
+        HDRAppList.addOrEnable(bundleID: bundleID, displayName: displayName)
+        objectWillChange.send()
+    }
+
+    func loadInstalledApps() {
+        guard !appPickerLoading else { return }
+        appPickerLoading = true
+        Task.detached(priority: .userInitiated) {
+            let apps = InstalledAppDiscovery.discoverInstalledApps()
+            await MainActor.run {
+                self.installedApps = apps
+                self.appPickerLoading = false
+            }
+        }
+    }
+
+    var filteredInstalledApps: [InstalledHDRApp] {
+        let query = appPickerQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if query.isEmpty { return installedApps }
+        return installedApps.filter { app in
+            app.displayName.lowercased().contains(query) || app.bundleID.lowercased().contains(query)
+        }
+    }
 }
 
 // MARK: - EDR capability with retry

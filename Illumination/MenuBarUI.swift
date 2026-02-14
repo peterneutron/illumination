@@ -11,6 +11,10 @@ final class CalibEditorState: ObservableObject {
     @Published var show: Bool = false
 }
 
+final class AppPickerEditorState: ObservableObject {
+    @Published var show: Bool = false
+}
+
 // MARK: - Views
 
 struct IlluminationMenuBarLabel: View {
@@ -30,6 +34,7 @@ struct IlluminationMenuBarLabel: View {
 struct IlluminationMenuView: View {
     @ObservedObject var vm: IlluminationViewModel
     @StateObject private var calibState = CalibEditorState()
+    @StateObject private var appPickerState = AppPickerEditorState()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -125,6 +130,9 @@ struct IlluminationMenuView: View {
                 AdvancedOptionsMenu(vm: vm, debugUnlocked: vm.debugUnlocked) {
                     vm.calibRefreshFields()
                     calibState.show = true
+                } onOpenAppPicker: {
+                    vm.loadInstalledApps()
+                    appPickerState.show = true
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -138,6 +146,10 @@ struct IlluminationMenuView: View {
             if vm.debugUnlocked && calibState.show {
                 Divider()
                 CalibratorEditor(vm: vm, onClose: { calibState.show = false })
+            }
+            if appPickerState.show {
+                Divider()
+                AppPickerPanel(vm: vm, onClose: { appPickerState.show = false })
             }
         }
         .padding(12)
@@ -179,6 +191,7 @@ private struct AdvancedOptionsMenu: View {
     @ObservedObject var vm: IlluminationViewModel
     let debugUnlocked: Bool
     var onOpenCalibrator: () -> Void
+    var onOpenAppPicker: () -> Void
 
     var body: some View {
         Menu("Advanced Options") {
@@ -212,6 +225,9 @@ private struct AdvancedOptionsMenu: View {
                 }
             }
             .disabled(!vm.alsAvailable)
+
+            Divider()
+            AppDetectionMenu(vm: vm, onOpenAppPicker: onOpenAppPicker)
 
             if debugUnlocked {
                 Divider()
@@ -338,6 +354,68 @@ private struct DebugMenu: View {
     }
 }
 
+private struct AppDetectionMenu: View {
+    @ObservedObject var vm: IlluminationViewModel
+    var onOpenAppPicker: () -> Void
+
+    var body: some View {
+        Group {
+            Text("App Detection").font(.caption).foregroundStyle(.secondary)
+
+            Menu("Detection: \(modeName(vm.hdrMode))") {
+                ForEach([(0, "Off"), (3, "Apps")], id: \.0) { mode in
+                    Button(action: { vm.setHDRMode(mode.0) }) {
+                        HStack {
+                            Text(mode.1)
+                            if vm.hdrMode == mode.0 { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+            }
+
+            Button("Add Frontmost App (\(vm.frontmostAppDisplayLabel))") {
+                vm.addFrontmostHDRApp()
+            }
+            .disabled(!vm.canAddFrontmostHDRApp)
+            .help(vm.canAddFrontmostHDRApp ? "Add the frontmost app to App Detection." : vm.addFrontmostDisabledReason)
+
+            Button("Add from Installed Apps…") {
+                onOpenAppPicker()
+            }
+
+            Menu("Managed Apps") {
+                let entries = vm.hdrManagedApps
+                if entries.isEmpty {
+                    Text("No managed apps yet.")
+                } else {
+                    ForEach(entries, id: \.bundleID) { entry in
+                        Menu(entry.displayName ?? entry.bundleID) {
+                            let isEnabled = entry.isEnabled
+                            Button(isEnabled ? "Disable" : "Enable") {
+                                vm.setHDRAppEnabled(bundleID: entry.bundleID, enabled: !isEnabled)
+                            }
+                            if !entry.isDefault {
+                                Divider()
+                                Button("Remove") {
+                                    vm.removeHDRApp(bundleID: entry.bundleID)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button("Reset App Defaults") {
+                vm.resetHDRAppDefaults()
+            }
+        }
+    }
+
+    private func modeName(_ mode: Int) -> String {
+        BrightnessController.modeName(mode)
+    }
+}
+
 // MARK: - Inline Calibrator Editor
 private struct CalibratorEditor: View {
     @ObservedObject var vm: IlluminationViewModel
@@ -383,6 +461,64 @@ private struct CalibratorEditor: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.3)))
         .onAppear { vm.calibRefreshFields() }
+    }
+}
+
+private struct AppPickerPanel: View {
+    @ObservedObject var vm: IlluminationViewModel
+    var onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Installed Apps").font(.headline)
+                Spacer()
+                Button(action: onClose) { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain)
+            }
+
+            TextField("Search apps or bundle IDs", text: $vm.appPickerQuery)
+                .textFieldStyle(.roundedBorder)
+
+            if vm.appPickerLoading {
+                Text("Scanning installed apps…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if vm.filteredInstalledApps.isEmpty {
+                Text("No matching apps.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                let visibleApps = Array(vm.filteredInstalledApps.prefix(80))
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(visibleApps, id: \.bundleID) { app in
+                            Button(action: {
+                                vm.addHDRApp(bundleID: app.bundleID, displayName: app.displayName)
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(app.displayName)
+                                        Text(app.bundleID)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "plus.circle")
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            Divider()
+                        }
+                    }
+                }
+                .frame(maxHeight: 220)
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.3)))
+        .onAppear { vm.loadInstalledApps() }
     }
 }
 
