@@ -45,134 +45,122 @@ final class DisplayStateProbe {
 
     // Probe all IOMobileFramebufferShim instances and extract display info
     func probe() -> [DisplayInfo] {
-        var results: [DisplayInfo] = []
         let collected = collectShimEntries()
         if collected.isEmpty { lastResults = []; return [] }
 
-        // AppKit hints for built-in display
-        let builtInScreen: NSScreen? = {
-            for s in NSScreen.screens {
-                if let id = s.displayId, CGDisplayIsBuiltin(id) != 0 { return s }
-            }
-            return nil
-        }()
-        let appKitPotential: Double? = builtInScreen.flatMap { s in
-            if #available(macOS 14.0, *) { return Double(s.maximumPotentialExtendedDynamicRangeColorComponentValue) }
-            return nil
-        }
-        let appKitCurrent: Double? = builtInScreen.map { Double($0.maximumExtendedDynamicRangeColorComponentValue) }
+        let (appKitPotential, appKitCurrent) = appKitHintsForBuiltInDisplay()
         let runtimeSawEDR: Bool = BrightnessController.shared.currentGammaCapDetails().sawEDR
 
+        var results: [DisplayInfo] = []
         for (e, dict) in collected {
-
-            // identifier
-            let identifier: String = (dict["IONameMatched"] as? String)
-                ?? (dict["IOName"] as? String)
-                ?? "unknown"
-
-            // isInternal: external == No/false or missing
-            let externalVal = dict["external"]
-            let isExternal: Bool = {
-                switch externalVal {
-                case let b as Bool: return b
-                case let s as String: return (s as NSString).boolValue
-                case let n as NSNumber: return n.boolValue
-                default: return false // default to internal if key missing
-                }
-            }()
-            let isInternal = !isExternal
-
-            // isActive: NormalModeActive == true AND IOPowerManagement.CurrentPowerState >= 1
-            let normalModeActive: Bool = {
-                if let b = dict["NormalModeActive"] as? Bool { return b }
-                if let n = dict["NormalModeActive"] as? NSNumber { return n.boolValue }
-                return false
-            }()
-            let currentPowerState: Int = {
-                if let pm = dict["IOPowerManagement"] as? [String: Any] {
-                    if let n = pm["CurrentPowerState"] as? NSNumber { return n.intValue }
-                }
-                return 0
-            }()
-            let isActive = normalModeActive && (currentPowerState >= 1)
-
-            // limit_max_physical_brightness (16.16 nits)
-            let limitMaxRaw: UInt64? = {
-                if let n = dict["limit_max_physical_brightness"] as? NSNumber { return n.uint64Value }
-                return nil
-            }()
-            let limitMaxDec: Double? = limitMaxRaw.map { Double($0) / 65536.0 }
-
-            // Capability (union, no "presence only"): ≥1000 nits (limit) OR AppKit potential >1 OR runtime sawEDR
-            let capViaNits = ((limitMaxDec ?? 0.0) >= 1000.0)
-            let capViaAppKit = (appKitPotential ?? 1.0) > 1.0
-            let edrCapable = capViaNits || capViaAppKit || runtimeSawEDR
-            let capSource: String? = edrCapable ? (capViaNits ? "ioreg" : (capViaAppKit ? "appkit" : "runtime")) : nil
-
-            // EDR active hint via IOReg DynamicRange
-            let edrActiveIOReg: Bool = {
-                guard let tes = dict["TimingElements"] as? [Any] else { return false }
-                // Pick first for now; could scan for IsPreferred == Yes
-                for te in tes {
-                    guard let teDict = te as? [String: Any] else { continue }
-                    if let modes = teDict["ColorModes"] as? [Any] {
-                        for m in modes {
-                            if let md = m as? [String: Any] {
-                                if let dyn = md["DynamicRange"] as? NSNumber, dyn.doubleValue > 0 { return true }
-                            }
-                        }
-                    }
-                }
-                return false
-            }()
-            // Prefer AppKit current ratio for internal display; fall back to IOReg
-            let edrActive: Bool = {
-                if isInternal, let r = appKitCurrent { return r > 1.0 }
-                return edrActiveIOReg
-            }()
-
-            // ALS presence and raw
-            let hasALS: Bool = {
-                if let n = dict["ALSSChannelCount"] as? NSNumber { return n.intValue > 0 }
-                return false
-            }()
-            // AmbientBrightness can be NSNumber or Data
-            let (alsRaw, alsSensible): (UInt64?, Bool) = {
-                if let n = dict["AmbientBrightness"] as? NSNumber {
-                    let v = n.uint64Value
-                    return (v, v != 65_536)
-                } else if let d = dict["AmbientBrightness"] as? Data, d.count >= 4 {
-                    let rawLE = d.withUnsafeBytes { $0.load(as: UInt32.self) }
-                    let v = UInt64(UInt32(littleEndian: rawLE))
-                    return (v, v != 65_536)
-                }
-                return (nil, false)
-            }()
-
-            let role: String = isActive ? (isInternal ? "primary" : "secondary") : "inactive"
-
-            results.append(DisplayInfo(
-                identifier: identifier,
-                isInternal: isInternal,
-                isActive: isActive,
-                role: role,
-                edrCapable: edrCapable,
-                edrCapSource: capSource,
-                edrActive: edrActive,
-                edrMaxHeadroomRaw: nil,
-                hasALS: hasALS,
-                alsSensible: alsSensible,
-                alsRawValue: alsRaw,
-                limitMaxPhysicalBrightness: limitMaxDec,
-                appKitPotentialRatio: isInternal ? appKitPotential : nil,
-                appKitCurrentRatio: isInternal ? appKitCurrent : nil
-            ))
+            let info = buildDisplayInfo(
+                dict: dict,
+                appKitPotential: appKitPotential,
+                appKitCurrent: appKitCurrent,
+                runtimeSawEDR: runtimeSawEDR
+            )
+            results.append(info)
 
             IOObjectRelease(e)
         }
 
         lastResults = results
         return results
+    }
+
+    private func appKitHintsForBuiltInDisplay() -> (Double?, Double?) {
+        let builtIn = NSScreen.screens.first(where: { screen in
+            if let id = screen.displayId { return CGDisplayIsBuiltin(id) != 0 }
+            return false
+        })
+        let potential = builtIn.flatMap { screen in
+            if #available(macOS 14.0, *) { return Double(screen.maximumPotentialExtendedDynamicRangeColorComponentValue) }
+            return nil
+        }
+        let current = builtIn.map { Double($0.maximumExtendedDynamicRangeColorComponentValue) }
+        return (potential, current)
+    }
+
+    private func buildDisplayInfo(
+        dict: [String: Any],
+        appKitPotential: Double?,
+        appKitCurrent: Double?,
+        runtimeSawEDR: Bool
+    ) -> DisplayInfo {
+        let identifier = (dict["IONameMatched"] as? String) ?? (dict["IOName"] as? String) ?? "unknown"
+        let isExternal = boolValue(dict["external"])
+        let isInternal = !isExternal
+        let normalModeActive = boolValue(dict["NormalModeActive"])
+        let currentPowerState = (dict["IOPowerManagement"] as? [String: Any]).flatMap { ($0["CurrentPowerState"] as? NSNumber)?.intValue } ?? 0
+        let isActive = normalModeActive && (currentPowerState >= 1)
+
+        let limitMaxRaw = (dict["limit_max_physical_brightness"] as? NSNumber)?.uint64Value
+        let limitMaxDec = limitMaxRaw.map { Double($0) / 65536.0 }
+
+        let capViaNits = (limitMaxDec ?? 0.0) >= 1000.0
+        let capViaAppKit = (appKitPotential ?? 1.0) > 1.0
+        let edrCapable = capViaNits || capViaAppKit || runtimeSawEDR
+        let capSource: String? = edrCapable ? (capViaNits ? "ioreg" : (capViaAppKit ? "appkit" : "runtime")) : nil
+
+        let edrActiveIOReg = hasEDRDynamicRange(dict)
+        let edrActive = isInternal ? ((appKitCurrent ?? 1.0) > 1.0) : edrActiveIOReg
+
+        let hasALS = ((dict["ALSSChannelCount"] as? NSNumber)?.intValue ?? 0) > 0
+        let (alsRaw, alsSensible) = decodeAmbientBrightness(dict["AmbientBrightness"])
+        let role = isActive ? (isInternal ? "primary" : "secondary") : "inactive"
+
+        return DisplayInfo(
+            identifier: identifier,
+            isInternal: isInternal,
+            isActive: isActive,
+            role: role,
+            edrCapable: edrCapable,
+            edrCapSource: capSource,
+            edrActive: edrActive,
+            edrMaxHeadroomRaw: nil,
+            hasALS: hasALS,
+            alsSensible: alsSensible,
+            alsRawValue: alsRaw,
+            limitMaxPhysicalBrightness: limitMaxDec,
+            appKitPotentialRatio: isInternal ? appKitPotential : nil,
+            appKitCurrentRatio: isInternal ? appKitCurrent : nil
+        )
+    }
+
+    private func boolValue(_ value: Any?) -> Bool {
+        switch value {
+        case let b as Bool: return b
+        case let s as String: return (s as NSString).boolValue
+        case let n as NSNumber: return n.boolValue
+        default: return false
+        }
+    }
+
+    private func hasEDRDynamicRange(_ dict: [String: Any]) -> Bool {
+        guard let timingElements = dict["TimingElements"] as? [Any] else { return false }
+        for element in timingElements {
+            guard let elementDict = element as? [String: Any],
+                  let colorModes = elementDict["ColorModes"] as? [Any] else { continue }
+            for mode in colorModes {
+                guard let modeDict = mode as? [String: Any],
+                      let dynamicRange = modeDict["DynamicRange"] as? NSNumber else { continue }
+                if dynamicRange.doubleValue > 0 { return true }
+            }
+        }
+        return false
+    }
+
+    private func decodeAmbientBrightness(_ rawValue: Any?) -> (UInt64?, Bool) {
+        if let number = rawValue as? NSNumber {
+            let value = number.uint64Value
+            return (value, value != 65_536)
+        }
+        if let data = rawValue as? Data, data.count >= 4 {
+            let rawLE = data.withUnsafeBytes { $0.load(as: UInt32.self) }
+            let value = UInt64(UInt32(littleEndian: rawLE))
+            return (value, value != 65_536)
+        }
+        return (nil, false)
     }
 
     // Create an AmbientLightReader bound to the best candidate entry; retain handled by reader.
