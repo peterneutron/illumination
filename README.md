@@ -30,6 +30,7 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
 - Lux is capped at **120 000** to match observed ALS saturation.
 - EDR can draw significant power at high nits.
 - Built‑in displays only (for now).
+- ALS `xDark` is intentionally pinned to **0.0** in the current model. This is preserved for compatibility and should be revisited with explicit recalibration experiments.
 
 ## Getting Started: Building from Source
 

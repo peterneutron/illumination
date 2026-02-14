@@ -46,7 +46,9 @@ struct LuxCalibrator: Codable {
     // Seeded from user-provided measurements: sun anchor + LED steps @ 20cm
     var a: Double = 20.701263635343665
     var p: Double = 1.13652988767883
-    // Covered/baseline decoded value (raw 118,000 / 2^20)
+    // Covered/baseline decoded value (raw 118,000 / 2^20).
+    // NOTE: xDark is intentionally pinned to 0.0 in the current model.
+    // The exact historical rationale is unclear; preserve behavior and revisit later.
     var xDark: Double = 0.0
 
     func estimateLux(decodedX: Double) -> Double {
@@ -80,39 +82,23 @@ extension ALSManager {
     }
 }
 
-// Fixed-point + sentinel constants
-private let kFixedPointShift = 20.0                // 12.20-ish fixed point
-private let kFixedPointDiv  = pow(2.0, kFixedPointShift) // 1,048,576.0
-private let kSentinelU32    = UInt32(Int32.max)    // 0x7FFFFFFF
-private let kSentinelGuard  = UInt32(0x7FFFFF00)   // treat near-top as saturated too
-private let kMaxDecodedX: Double = 2047.0          // ≈ INT32_MAX / 2^20, safe pre-sentinel ceiling (sensor-space counts)
+// Fixed-point/sentinel constants are implemented in ALSComputation.decodeAmbientBrightnessSample.
+private let kMaxDecodedX: Double = 2047.0 // used for saturation surrogate bounds
 
 // MARK: - Final model: calibrated power law with xDark=0 and day-max relative blend
 
 // Decode helper for the undocumented IOReg key (fixed-point → decoded counts in X-space)
 private func decodeAmbientBrightness(_ prop: Any) -> ALSSample {
-    // CFNumber path
-    if let n = prop as? NSNumber {
-        let raw = n.int64Value
-        // guard rails
-        if raw >= Int64(Int32.max) - 16 { return .saturated }
-        if raw < 0 { return .invalid }
-        let decodedX = Double(raw) / kFixedPointDiv
-        guard decodedX.isFinite else { return .invalid }
-        // Clamp in sensor-space (counts), not physical lux
-        return .value(min(decodedX, kMaxDecodedX))
+    let decoded = ALSComputation.decodeAmbientBrightnessSample(raw: prop)
+    switch decoded.kind {
+    case "value":
+        if let value = decoded.value { return .value(value) }
+        return .invalid
+    case "saturated":
+        return .saturated
+    default:
+        return .invalid
     }
-    // CFData path (assume LE UInt32 payload)
-    if let d = prop as? Data, d.count >= 4 {
-        let rawLE = d.withUnsafeBytes { $0.load(as: UInt32.self) }
-        let raw = UInt32(littleEndian: rawLE)
-        if raw >= kSentinelGuard || raw == kSentinelU32 { return .saturated }
-        let decodedX = Double(raw) / kFixedPointDiv
-        guard decodedX.isFinite else { return .invalid }
-        // Clamp in sensor-space (counts), not physical lux
-        return .value(min(decodedX, kMaxDecodedX))
-    }
-    return .invalid
 }
 
 // MARK: - Ambient Light Reader (IORegistry)
@@ -151,7 +137,7 @@ final class AmbientLightReader {
 final class ALSManager {
     static let shared = ALSManager()
 
-    // Published-like values (thread: main)
+    // Published-like values (main-thread observed by view models/UI)
     private(set) var currentLux: Double? = nil
     private(set) var available: Bool = false
     private(set) var sampleHz: Double = 2.0 { didSet { sampleHz = max(0.5, min(60.0, sampleHz)) } }
@@ -336,107 +322,107 @@ final class ALSManager {
 
         switch reader.readSample() {
         case .value(let decodedX):
-            invalidStreak = 0; saturatedStreak = 0
+            handleValueSample(decodedX: decodedX, now: now, dt: dt, tauBase: tauBase, multBase: multBase)
 
-            // Remember last good sample for stall-breaking
-            lastGoodX = decodedX
-            lastGoodAt = now
+        case .saturated:
+            handleSaturatedSample(now: now, dt: dt, tauBase: tauBase, multBase: multBase)
 
-            // Compute Δx (decoded counts above dark baseline) and update day-max in sensor-space
-            let dx = max(0.0, decodedX - calibrator.xDark)
-            updateRollingMaxDx(dx)
+        case .invalid:
+            handleInvalidSample()
+        }
+    }
 
-            // Smooth the decoded counts (sensor-space)
-            let tau = tauBase
-            let mult = multBase
-            let xSmoothed = ema(decodedX, state: &lpState, dt: dt, tau: tau, mult: mult)
+    private func handleValueSample(decodedX: Double, now: Date, dt: Double, tauBase: Double, multBase: Double) {
+        invalidStreak = 0
+        saturatedStreak = 0
 
-            // Estimate physical lux from counts via calibrated power-law
-            let Lfit = calibrator.estimateLux(decodedX: xSmoothed)
+        lastGoodX = decodedX
+        lastGoodAt = now
 
-            // Blend with day-max relative model for robustness (only after confidence)
-            let xhat = min(1.0, dx / max(rollingMaxDx, 1e-6))
-            let Lrel = 50.0 + (100_000.0 - 50.0) * pow(xhat, 1.45)
+        let dx = max(0.0, decodedX - calibrator.xDark)
+        updateRollingMaxDx(dx)
 
-            // Confidence for using relative model: only after warmup and once we've seen strong daylight
-            var w = 0.0
-            if now >= warmupUntil {
-                if hasSunAnchor || rollingMaxDx >= sunDxTriggerConst {
-                    let xSun = 2047.0
-                    let conf = min(1.0, max(0.0, (rollingMaxDx - sunDxTriggerConst) / max(1.0, (xSun - sunDxTriggerConst))))
-                    w = relBlendMaxConst * conf // ramp relative blend up as we gain confidence
-                }
-            }
+        let xSmoothed = ema(decodedX, state: &lpState, dt: dt, tau: tauBase, mult: multBase)
+        let fitLux = calibrator.estimateLux(decodedX: xSmoothed)
+        let normalized = min(1.0, dx / max(rollingMaxDx, 1e-6))
+        let relLux = ALSComputation.relativeLux(normalizedX: normalized)
+        let blendWeight = ALSComputation.blendWeight(
+            rollingMaxDx: rollingMaxDx,
+            hasSunAnchor: hasSunAnchor,
+            now: now,
+            warmupUntil: warmupUntil,
+            sunDxTrigger: sunDxTriggerConst,
+            relBlendMax: relBlendMaxConst
+        )
+        let finalLux = ALSComputation.blendedLux(fit: fitLux, relative: relLux, weight: blendWeight)
 
-            let L = ALSComputation.blendedLux(fit: Lfit, relative: Lrel, weight: w)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.currentLux = finalLux
+            self.debugDecodedX = xSmoothed
+            self.debugDx = dx
+            self.debugLfit = fitLux
+            self.debugLrel = relLux
+            self.debugBlendW = blendWeight
+            self.debugRollingMaxDx = self.rollingMaxDx
+            self.evaluateAuto(lux: finalLux)
+        }
+    }
+
+    private func handleSaturatedSample(now: Date, dt: Double, tauBase: Double, multBase: Double) {
+        saturatedStreak += 1
+        if now.timeIntervalSince(lastGoodAt) >= saturationApplyAfter {
+            hasSunAnchor = true
+            let surrogateX = ALSComputation.surrogateSaturatedX(
+                lastGoodX: lastGoodX,
+                calibratorXDark: calibrator.xDark,
+                rollingMaxDx: rollingMaxDx,
+                saturationBoost: saturationBoost,
+                saturationFloorDx: saturationFloorDx,
+                maxDecodedX: kMaxDecodedX
+            )
+
+            let tau = max(1.0, tauBase * 0.7)
+            let mult = max(1.2, multBase)
+            let xSmoothed = ema(surrogateX, state: &lpState, dt: dt, tau: tau, mult: mult)
+
+            let fitLux = calibrator.estimateLux(decodedX: xSmoothed)
+            let dxSm = max(0.0, xSmoothed - calibrator.xDark)
+            updateRollingMaxDx(dxSm)
+            let normalized = min(1.0, dxSm / max(rollingMaxDx, 1e-6))
+            let relLux = ALSComputation.relativeLux(normalizedX: normalized)
+            let blendWeight = ALSComputation.blendWeight(
+                rollingMaxDx: rollingMaxDx,
+                hasSunAnchor: hasSunAnchor,
+                now: now,
+                warmupUntil: warmupUntil,
+                sunDxTrigger: sunDxTriggerConst,
+                relBlendMax: relBlendMaxConst
+            )
+            let finalLux = ALSComputation.blendedLux(fit: fitLux, relative: relLux, weight: blendWeight)
 
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.currentLux = L
-                // Debug snapshot
+                self.currentLux = finalLux
                 self.debugDecodedX = xSmoothed
-                self.debugDx = dx
-                self.debugLfit = Lfit
-                self.debugLrel = Lrel
-                self.debugBlendW = w
+                self.debugDx = dxSm
+                self.debugLfit = fitLux
+                self.debugLrel = relLux
+                self.debugBlendW = blendWeight
                 self.debugRollingMaxDx = self.rollingMaxDx
-                self.evaluateAuto(lux: L)
+                self.evaluateAuto(lux: finalLux)
             }
+        }
 
-        case .saturated:
-            saturatedStreak += 1
-            // If saturation persists long enough, synthesize a surrogate “very bright” lux value
-            if now.timeIntervalSince(lastGoodAt) >= saturationApplyAfter {
-                // We are saturated: mark sun-anchor and synthesize a sensor-space surrogate X (decoded counts)
-                hasSunAnchor = true
-                var surrogateX = max(lastGoodX * saturationBoost,
-                                      calibrator.xDark + max(rollingMaxDx * 1.05, saturationFloorDx))
-                surrogateX = min(surrogateX, kMaxDecodedX)
+        if ALSComputation.shouldAttemptRebind(streak: saturatedStreak, sampleHz: sampleHz) {
+            attemptRebind()
+        }
+    }
 
-                // Nudge the filter a bit faster upward while saturated
-                let tau = max(1.0, tauBase * 0.7)
-                let mult = max(1.2, multBase)
-                let xSmoothed = ema(surrogateX, state: &lpState, dt: dt, tau: tau, mult: mult)
-
-                // Calibrated lux estimate + gated relative blend
-                let Lfit = calibrator.estimateLux(decodedX: xSmoothed)
-                let dxSm = max(0.0, xSmoothed - calibrator.xDark)
-                // Keep rolling max fresh during sustained saturation
-                updateRollingMaxDx(dxSm)
-                let xhat = min(1.0, dxSm / max(rollingMaxDx, 1e-6))
-                let Lrel = 50.0 + (100_000.0 - 50.0) * pow(xhat, 1.45)
-
-                var w = 0.0
-                if now >= warmupUntil {
-                    if hasSunAnchor || rollingMaxDx >= sunDxTriggerConst {
-                        let xSun = 2047.0
-                        let conf = min(1.0, max(0.0, (rollingMaxDx - sunDxTriggerConst) / max(1.0, (xSun - sunDxTriggerConst))))
-                        w = relBlendMaxConst * conf
-                    }
-                }
-
-                let L = ALSComputation.blendedLux(fit: Lfit, relative: Lrel, weight: w)
-
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.currentLux = L
-                    // Debug snapshot
-                    self.debugDecodedX = xSmoothed
-                    self.debugDx = dxSm
-                    self.debugLfit = Lfit
-                    self.debugLrel = Lrel
-                    self.debugBlendW = w
-                    self.debugRollingMaxDx = self.rollingMaxDx
-                    self.evaluateAuto(lux: L)
-                }
-            }
-
-            // Try to recover binding if saturation is stuck for a while
-            if saturatedStreak >= Int(sampleHz * 5) { attemptRebind() }
-
-        case .invalid:
-            invalidStreak += 1
-            if invalidStreak >= Int(sampleHz * 5) { attemptRebind() }
+    private func handleInvalidSample() {
+        invalidStreak += 1
+        if ALSComputation.shouldAttemptRebind(streak: invalidStreak, sampleHz: sampleHz) {
+            attemptRebind()
         }
     }
 
@@ -467,9 +453,13 @@ final class ALSManager {
         // Re-scan IORegistry if we appear stuck
         if let nr = DisplayStateProbe.shared.makeALSReader() {
             reader = nr
-            available = true
+            DispatchQueue.main.async { [weak self] in
+                self?.available = true
+            }
         } else {
-            available = false
+            DispatchQueue.main.async { [weak self] in
+                self?.available = false
+            }
         }
         invalidStreak = 0
         saturatedStreak = 0
@@ -516,10 +506,14 @@ final class ALSManager {
                 desired = max(entryMinPercent, desired)
                 // Ramp and slope-limit
                 let dt = 1.0 / max(0.001, sampleHz)
-                var next = current + (desired - current) * step
-                let maxDelta = maxPercentPerSecond * dt
-                next = current + max(-maxDelta, min(maxDelta, next - current))
-                next = max(entryMinPercent, min(100.0, next))
+                let next = ALSComputation.nextRampPercent(
+                    currentPercent: current,
+                    targetPercent: desired,
+                    entryMinPercent: entryMinPercent,
+                    maxPercentPerSecond: maxPercentPerSecond,
+                    dt: dt,
+                    step: step
+                )
                 bc.setUserPercent(next)
             }
             // Clear any staged target once we’re actively controlling
@@ -531,44 +525,37 @@ final class ALSManager {
 
         // Master gating with hysteresis + grace
         if Date() < graceUntil { return }
-        let onCountReq = Int(sampleHz * onSeconds)
-        let offCountReq = Int(sampleHz * offSeconds)
+        let canEnable = !(edrDisabledAt.map { Date().timeIntervalSince($0) < minOffSecondsGuard } ?? false)
+        let canDisable = !(edrEnabledAt.map { Date().timeIntervalSince($0) < minOnSecondsGuard } ?? false)
+        let gate = ALSComputation.nextAutoGateState(
+            lux: lux,
+            isOn: isOn,
+            aboveCount: aboveCount,
+            belowCount: belowCount,
+            onLux: onLux,
+            offLux: offLux,
+            sampleHz: sampleHz,
+            onSeconds: onSeconds,
+            offSeconds: offSeconds,
+            canEnable: canEnable,
+            canDisable: canDisable
+        )
 
-        if lux >= onLux {
-            aboveCount = min(aboveCount + 1, onCountReq)
-        } else {
-            aboveCount = max(0, aboveCount - 1)
-        }
+        aboveCount = gate.aboveCount
+        belowCount = gate.belowCount
 
-        if lux <= offLux {
-            belowCount = min(belowCount + 1, offCountReq)
-        } else {
-            belowCount = max(0, belowCount - 1)
-        }
-
-        if !isOn && aboveCount >= onCountReq {
-            // Enforce minimum OFF time before enabling
-            if let tOff = edrDisabledAt, Date().timeIntervalSince(tOff) < minOffSecondsGuard {
-                // wait a bit longer before re-enabling
-            } else {
-                bc.setEnabled(true)
-                edrEnabledAt = Date()
-                // Start gently at entry minimum
-                bc.setUserPercent(entryMinPercent)
-            }
-            aboveCount = 0; belowCount = 0
-        } else if isOn && belowCount >= offCountReq {
-            // Enforce minimum ON time before disabling
-            if let tOn = edrEnabledAt, Date().timeIntervalSince(tOn) < minOnSecondsGuard {
-                // remain ON a bit longer
-            } else {
-                // Turn EDR OFF and set percent to 0
-                bc.setEnabled(false)
-                edrDisabledAt = Date()
-                edrEnabledAt = nil
-                bc.setUserPercent(0.0)
-            }
-            aboveCount = 0; belowCount = 0
+        switch gate.action {
+        case .none:
+            break
+        case .enable:
+            bc.setEnabled(true)
+            edrEnabledAt = Date()
+            bc.setUserPercent(entryMinPercent)
+        case .disable:
+            bc.setEnabled(false)
+            edrDisabledAt = Date()
+            edrEnabledAt = nil
+            bc.setUserPercent(0.0)
         }
     }
 
@@ -578,14 +565,7 @@ final class ALSManager {
     /// - At L ≈ 10×onLux: ~85–95%
     /// - Approaches 100% asymptotically for extreme L
     private func percent(forLux lux: Double) -> Double {
-        let L_on = max(1.0, onLux)
-        let p0 = entryMinPercent
-        if lux <= L_on { return p0 }
-        let L_hi = L_on * 10.0
-        let r = min(1.0, max(0.0, log(lux / L_on) / max(1e-6, log(L_hi / L_on))))
-        // smoothstep
-        let s = r * r * (3.0 - 2.0 * r)
-        return p0 + (100.0 - p0) * s
+        ALSComputation.percentForLux(lux: lux, onLux: onLux, entryMinPercent: entryMinPercent)
     }
 
     // MARK: - Profile API
@@ -633,7 +613,9 @@ final class ALSManager {
     func clearAnchors() { saveAnchor(nil, isA: true); saveAnchor(nil, isA: false) }
     func setDarkFromCurrent() {
         guard let x = debugDecodedX else { return }
-        // Only accept xDark when truly dark (near zero). Otherwise ignore to avoid corrupting Δx.
+        // NOTE: xDark pinning is intentional for now (xDark = 0.0), even when this capture path is used.
+        // Historical reasoning is unclear; revisit later with explicit calibration experiments.
+        // We still gate this action on near-dark capture to avoid accidental operator misuse.
         let epsilon: Double = 0.02 // counts in decoded X-space (~2e-2 of 1 count)
         guard x <= epsilon else { return }
         var c = calibrator
@@ -654,14 +636,11 @@ final class ALSManager {
         saveAnchor(CalibAnchor(dx: dx, lux: lux), isA: false)
     }
     func fitCalibrationFromAnchors() {
-        guard let A = calibAnchorA(), let B = calibAnchorB() else { return }
-        guard A.dx > 1e-6, B.dx > 1e-6, A.lux > 1e-6, B.lux > 1e-6, A.dx != B.dx else { return }
-        let p = log(B.lux / A.lux) / log(B.dx / A.dx)
-        let pClamped = max(0.8, min(1.8, p))
-        let a = A.lux / pow(A.dx, pClamped)
+        guard let anchorA = calibAnchorA(), let anchorB = calibAnchorB() else { return }
+        guard let fitted = ALSComputation.fitCalibration(anchorA: (anchorA.dx, anchorA.lux), anchorB: (anchorB.dx, anchorB.lux)) else { return }
         var c = calibrator
-        c.a = a
-        c.p = pClamped
+        c.a = fitted.a
+        c.p = fitted.p
         c.save()
         calibrator = LuxCalibrator.load()
     }
