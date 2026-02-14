@@ -35,6 +35,7 @@
 		D158E76E8F1A760B2FE56A77 /* BrightnessTechnique.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7840F06781096727E93087A8 /* BrightnessTechnique.swift */; };
 		D31DF05FF3F451407FE2FB7E /* OverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4320C584B2087058CD0FD62F /* OverlayWindow.swift */; };
 		D41C2B0EBDEACF5859BA22D9 /* MenuBarUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 775BC76C935D8068B602DBF2 /* MenuBarUI.swift */; };
+		D44BAF636D572C93DA6C181E /* AlgorithmProfiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F48D5DA2825882F15ACD05 /* AlgorithmProfiles.swift */; };
 		E28CCD21E9B9316982057F3E /* IlluminationApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557AD4D677E272316445B950 /* IlluminationApp.swift */; };
 		E64ADD19A4E4D1851B62CCE5 /* ALSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FABC729ADCF702FE9C45D5 /* ALSManager.swift */; };
 		EFBF11B67E3CE37F846F72C5 /* SystemInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA9A734FD3BB5FCC4362B2A /* SystemInfo.swift */; };
@@ -70,6 +71,7 @@
 		4320C584B2087058CD0FD62F /* OverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindow.swift; sourceTree = "<group>"; };
 		49E679BF0F06968528066BEC /* HDRTile.mp4 */ = {isa = PBXFileReference; path = HDRTile.mp4; sourceTree = "<group>"; };
 		4BA9A734FD3BB5FCC4362B2A /* SystemInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemInfo.swift; sourceTree = "<group>"; };
+		52F48D5DA2825882F15ACD05 /* AlgorithmProfiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlgorithmProfiles.swift; sourceTree = "<group>"; };
 		557AD4D677E272316445B950 /* IlluminationApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IlluminationApp.swift; sourceTree = "<group>"; };
 		5E658D221641B97F765D8A8A /* IlluminationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IlluminationViewModel.swift; sourceTree = "<group>"; };
 		620B31C8429296B8ABB8326E /* Brightness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brightness.swift; sourceTree = "<group>"; };
@@ -101,6 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				A6C41DF8C81AD0D73AF82A8F /* AdvancedOptionsMenus.swift */,
+				52F48D5DA2825882F15ACD05 /* AlgorithmProfiles.swift */,
 				9A3FEAD7A9BCC7EE36D49C10 /* ALSComputation.swift */,
 				6B1622E697F4CDBAAD5A0813 /* ALSCoreTypes.swift */,
 				F8FABC729ADCF702FE9C45D5 /* ALSManager.swift */,
@@ -295,6 +298,7 @@
 				0B67248B8D63386232139640 /* ALSReplay.swift in Sources */,
 				EFD3014556E41207BC40F9B5 /* ALSTrace.swift in Sources */,
 				B03645D077FF7712156506E2 /* AdvancedOptionsMenus.swift in Sources */,
+				D44BAF636D572C93DA6C181E /* AlgorithmProfiles.swift in Sources */,
 				09EAC31EDD83F8F8B4727EDB /* AppDetectionViews.swift in Sources */,
 				A23B2E6909D654728F3923B4 /* AppPolicy.swift in Sources */,
 				50960829434847E113C16B43 /* Brightness.swift in Sources */,

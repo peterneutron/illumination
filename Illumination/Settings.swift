@@ -28,8 +28,10 @@ enum Settings {
         case hdrAwareFadeDuration = "illumination.hdraware.fade.duration"
 
         case alsProfile = "illumination.als.profile"
+        case alsHardwareProfile = "illumination.als.hardwareProfile"
         case alsAutoEnabled = "illumination.als.autoEnabled"
         case luxStepMode = "illumination.ui.lux.step"
+        case edrPolicyProfile = "illumination.edr.policyProfile"
 
         case alsCalibrator = "illumination.als.calibrator"
         case alsCalibAnchorA = "illumination.als.calib.anchorA"
@@ -146,11 +148,11 @@ enum Settings {
         set { store.set(newValue, forKey: Key.hdrAwareEnabled.rawValue) }
     }
     static var hdrDuckPercent: Double {
-        get { double(.hdrAwareDuckPercent, default: 50.0) }
+        get { double(.hdrAwareDuckPercent, default: EDRPolicyProfileCatalog.defaultConfig.hdrDefaultDuckPercent) }
         set { store.set(clamp(newValue, min: 0.0, max: 100.0), forKey: Key.hdrAwareDuckPercent.rawValue) }
     }
     static var hdrThreshold: Double {
-        get { double(.hdrAwareThreshold, default: 1.5) }
+        get { double(.hdrAwareThreshold, default: EDRPolicyProfileCatalog.defaultConfig.hdrDefaultThreshold) }
         set { store.set(clamp(newValue, min: 1.1, max: 3.0), forKey: Key.hdrAwareThreshold.rawValue) }
     }
     static var hdrRegionSamplerMode: Int {
@@ -158,13 +160,29 @@ enum Settings {
         set { store.set(clamp(newValue, min: 0, max: 3), forKey: Key.hdrRegionSamplerMode.rawValue) }
     }
     static var hdrFadeDuration: Double {
-        get { double(.hdrAwareFadeDuration, default: 0.25) }
+        get { double(.hdrAwareFadeDuration, default: EDRPolicyProfileCatalog.defaultConfig.hdrDefaultFadeDuration) }
         set { store.set(clamp(newValue, min: 0.05, max: 2.0), forKey: Key.hdrAwareFadeDuration.rawValue) }
     }
 
     static var alsProfileRaw: String? {
         get { store.string(forKey: Key.alsProfile.rawValue) }
         set { newValue.map { store.set($0, forKey: Key.alsProfile.rawValue) } ?? store.removeObject(forKey: Key.alsProfile.rawValue) }
+    }
+    static var alsHardwareProfileID: String {
+        get { store.string(forKey: Key.alsHardwareProfile.rawValue) ?? ALSHardwareProfileID.defaultProfile.rawValue }
+        set { store.set(newValue, forKey: Key.alsHardwareProfile.rawValue) }
+    }
+    static var alsHardwareProfile: ALSHardwareProfileID {
+        get { ALSHardwareProfileID(rawValue: alsHardwareProfileID) ?? .defaultProfile }
+        set { alsHardwareProfileID = newValue.rawValue }
+    }
+    static var edrPolicyProfileID: String {
+        get { store.string(forKey: Key.edrPolicyProfile.rawValue) ?? EDRPolicyProfileID.defaultProfile.rawValue }
+        set { store.set(newValue, forKey: Key.edrPolicyProfile.rawValue) }
+    }
+    static var edrPolicyProfile: EDRPolicyProfileID {
+        get { EDRPolicyProfileID(rawValue: edrPolicyProfileID) ?? .defaultProfile }
+        set { edrPolicyProfileID = newValue.rawValue }
     }
     static var alsAutoEnabled: Bool {
         get { bool(.alsAutoEnabled, default: false) }

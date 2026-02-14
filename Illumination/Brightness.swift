@@ -18,9 +18,11 @@ final class BrightnessController {
     private var enabled: Bool = false
     private var factor: Double = 1.0
     private var userPercent: Double = 100.0 // 0...100 user intent
-    private let safetyMargin: Double = 0.98 // base margin aimed to allow near-maximum when AB is on
-    private let refSpan: Double = 0.6 // scale for reference EDR lift normalization
-    private let refAlpha: Double = 1.0 // exponent for reference gain impact
+    private var edrPolicyProfileID: EDRPolicyProfileID = .defaultProfile
+    private var edrPolicy: EDRPolicyProfileConfig { EDRPolicyProfileCatalog.config(for: edrPolicyProfileID) }
+    private var safetyMargin: Double { edrPolicy.safetyMargin } // base margin aimed to allow near-maximum when AB is on
+    private var refSpan: Double { edrPolicy.refSpan } // scale for reference EDR lift normalization
+    private var refAlpha: Double { edrPolicy.refAlpha } // exponent for reference gain impact
     private var capPoller: Timer?
     private var edrRecoveryTimer: Timer?
     private var edrLowStreak: Int = 0
@@ -32,12 +34,12 @@ final class BrightnessController {
     // HDR-aware auto-duck
     private var hdrAwareEnabled: Bool = false
     private var hdrAwareDuckPercent: Double = 50.0 // lower target percent during HDR
-    private var hdrAwareThreshold: Double = 1.5    // EDR ratio threshold to consider HDR present
+    private var hdrAwareThreshold: Double = EDRPolicyProfileCatalog.defaultConfig.hdrDefaultThreshold    // EDR ratio threshold to consider HDR present
     private var hdrRegionSamplerMode: Int = 0 // 0=Off,1=Auto,2=Always
     private var hdrActiveStreak: Int = 0
     private var hdrInactiveStreak: Int = 0
     private let hdrDuckEngine = HDRDuckEngine()
-    private var hdrDuckFadeDuration: Double = 0.25 // seconds
+    private var hdrDuckFadeDuration: Double = EDRPolicyProfileCatalog.defaultConfig.hdrDefaultFadeDuration // seconds
     private let hdrSampler = HDRRegionSampler()
     private var hdrLastFrontmostBundleID: String = "unknown"
     private var hdrLastMatch: Bool = false
@@ -57,6 +59,7 @@ final class BrightnessController {
 
     init() {
         precondition(Thread.isMainThread, "BrightnessController must be initialized on the main thread")
+        edrPolicyProfileID = Settings.edrPolicyProfile
         // Restore persisted state
         let storedEnabled = Settings.masterEnabled
         let storedValue = Settings.brightnessFactor
@@ -288,7 +291,7 @@ final class BrightnessController {
     // MARK: - Poller
     private func startCapPoller() {
         stopCapPoller()
-        capPoller = Timer(fire: Date.now, interval: 1.0, repeats: true, block: { [weak self] _ in
+        capPoller = Timer(fire: Date.now, interval: edrPolicy.capPollIntervalSeconds, repeats: true, block: { [weak self] _ in
             guard let self = self else { return }
             let details = self.currentGammaCapDetails()
             let cap = details.cap
@@ -300,20 +303,22 @@ final class BrightnessController {
                 let hdrMode = self.hdrRegionSamplerModeValue()
                 if hdrMode != 0 {
                     if self.isHDRContentLikely(bestRatioHint: details.bestRatio) {
-                        self.hdrActiveStreak = min(10, self.hdrActiveStreak + 1)
+                        self.hdrActiveStreak = min(self.edrPolicy.hdrStreakClamp, self.hdrActiveStreak + 1)
                         self.hdrInactiveStreak = 0
                     } else {
-                        self.hdrInactiveStreak = min(10, self.hdrInactiveStreak + 1)
+                        self.hdrInactiveStreak = min(self.edrPolicy.hdrStreakClamp, self.hdrInactiveStreak + 1)
                         self.hdrActiveStreak = 0
                     }
                     // Trigger tween when state flips
                     var desired: Double? = nil
-                    if self.hdrActiveStreak >= 2 { desired = 1.0 }
-                    else if self.hdrInactiveStreak >= 3 { desired = 0.0 }
-                    if let d = desired, abs(d - self.hdrDuckEngine.duckLevel) > 0.001, !self.hdrDuckEngine.isAnimating {
-                        self.startHDRDuckAnimation(to: d)
+                    if self.hdrActiveStreak >= self.edrPolicy.hdrActiveRequired { desired = 1.0 }
+                    else if self.hdrInactiveStreak >= self.edrPolicy.hdrInactiveRequired { desired = 0.0 }
+                    if let d = desired,
+                       abs(d - self.hdrDuckEngine.duckLevel) > self.edrPolicy.hdrDuckAnimationEpsilon,
+                       !self.hdrDuckEngine.isAnimating {
+                        self.startHDRDuckAnimation(to: d, fps: self.edrPolicy.duckAnimationFPS)
                     }
-                    if !self.hdrDuckEngine.isAnimating && self.hdrDuckEngine.duckLevel > 0.0001 {
+                    if !self.hdrDuckEngine.isAnimating && self.hdrDuckEngine.duckLevel > self.edrPolicy.hdrDuckApplyMinLevel {
                         let duckTarget = BrightnessController.factor(forPercent: self.hdrAwareDuckPercent, cap: cap)
                         effective = (1.0 - self.hdrDuckEngine.duckLevel) * effective + self.hdrDuckEngine.duckLevel * duckTarget
                     }
@@ -337,21 +342,21 @@ final class BrightnessController {
 
                 // EDR watchdog: if EDR appears disengaged (maxEDR ~ 1.0) while userPercent > 0, aggressively rebuild overlay in fullscreen mode and bump FPS
                 let bestMaxEDR = targetDisplays().map { Double($0.maximumExtendedDynamicRangeColorComponentValue) }.max() ?? 1.0
-                if self.userPercent > 0.0 && bestMaxEDR <= 1.05 {
+                if self.userPercent > 0.0 && bestMaxEDR <= self.edrPolicy.edrLowThreshold {
                     self.edrLowStreak += 1
                 } else {
                     self.edrLowStreak = 0
                 }
 
-                if self.edrLowStreak >= 2 && !self.edrRecoveryPendingRevert { // sustained low for ~2s
+                if self.edrLowStreak >= self.edrPolicy.edrLowRequiredStreak && !self.edrRecoveryPendingRevert {
                     self.edrRecoveryPendingRevert = true
                     // Force strong overlay presence
-                    self.technique.setOverlayConfig(fullsize: true, fps: 60)
+                    self.technique.setOverlayConfig(fullsize: true, fps: self.edrPolicy.recoveryOverlayFPS)
                     self.technique.screenUpdate(screens: targetDisplays())
                     self.technique.nudgeEDR()
                     // Revert to user prefs after a short burst
                     self.edrRecoveryTimer?.invalidate()
-                    self.edrRecoveryTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+                    self.edrRecoveryTimer = Timer.scheduledTimer(withTimeInterval: self.edrPolicy.recoveryDurationSeconds, repeats: false) { [weak self] _ in
                         guard let self = self else { return }
                         self.technique.setOverlayConfig(fullsize: self.overlayFullsizeEnabled(), fps: self.overlayFPSValue())
                         self.edrRecoveryPendingRevert = false
@@ -360,7 +365,7 @@ final class BrightnessController {
                 }
             }
         })
-        capPoller?.tolerance = 0.2
+        capPoller?.tolerance = edrPolicy.capPollToleranceSeconds
         if let capPoller {
             RunLoop.main.add(capPoller, forMode: .common)
         }
@@ -412,9 +417,9 @@ final class BrightnessController {
         edrRecoveryTimer = nil
     }
 
-    private func startHDRDuckAnimation(to target: Double) {
+    private func startHDRDuckAnimation(to target: Double, fps: Double) {
         let fade = hdrDuckFadeDuration
-        hdrDuckEngine.start(to: target, fade: fade, onProgress: { [weak self] (level: Double) in
+        hdrDuckEngine.start(to: target, fade: fade, fps: fps, onProgress: { [weak self] (level: Double) in
             guard let self = self else { return }
             // Recompute effective factor and apply
             let details = self.currentGammaCapDetails()
@@ -519,6 +524,14 @@ final class BrightnessController {
     }
 
     func appPolicyScopeValue() -> Int { onMainSync { appPolicyScope.rawValue } }
+    func edrPolicyProfileIDValue() -> EDRPolicyProfileID { onMainSync { edrPolicyProfileID } }
+    func setEDRPolicyProfileID(_ id: EDRPolicyProfileID) {
+        onMainSync {
+            guard edrPolicyProfileID != id else { return }
+            edrPolicyProfileID = id
+            Settings.edrPolicyProfile = id
+        }
+    }
     func setAppPolicyScope(_ scope: Int) {
         onMainSync {
             appPolicyScope = AppPolicyScope(rawValue: scope) ?? .apps
@@ -602,20 +615,26 @@ final class BrightnessController {
         private var animStart: Date?
         private var startLevel: Double = 0.0
         private var targetLevel: Double = 0.0
-        private var fadeDuration: Double = 0.25
+        private var fadeDuration: Double = EDRPolicyProfileCatalog.defaultConfig.hdrDefaultFadeDuration
 
         var isAnimating: Bool { timer != nil }
 
         func stop() { timer?.invalidate(); timer = nil }
         func reset() { stop(); duckLevel = 0.0 }
 
-        func start(to target: Double, fade: Double, onProgress: @escaping (Double) -> Void, onEnd: (() -> Void)? = nil) {
+        func start(
+            to target: Double,
+            fade: Double,
+            fps: Double,
+            onProgress: @escaping (Double) -> Void,
+            onEnd: (() -> Void)? = nil
+        ) {
             stop()
             fadeDuration = max(0.05, fade)
             animStart = Date()
             startLevel = duckLevel
             targetLevel = max(0.0, min(1.0, target))
-            let interval = 1.0 / 30.0
+            let interval = 1.0 / max(1.0, fps)
             timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] t in
                 guard let self = self, let start = self.animStart else { t.invalidate(); return }
                 let elapsed = Date().timeIntervalSince(start)

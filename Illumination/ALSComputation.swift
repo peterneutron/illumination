@@ -13,24 +13,34 @@ enum ALSComputation {
         let action: AutoGateAction
     }
 
-    static let maxPlausibleLux = 120_000.0
-    static let minRelativeLux = 50.0
-    static let maxRelativeLux = 100_000.0
-    static let relativeGamma = 1.45
+    static var maxPlausibleLux: Double { ALSHardwareProfileCatalog.defaultConfig.maxPlausibleLux }
+    static var minRelativeLux: Double { ALSHardwareProfileCatalog.defaultConfig.minRelativeLux }
+    static var maxRelativeLux: Double { ALSHardwareProfileCatalog.defaultConfig.maxRelativeLux }
+    static var relativeGamma: Double { ALSHardwareProfileCatalog.defaultConfig.relativeGamma }
 
-    static func sanitizeLux(_ lux: Double) -> Double {
+    static func sanitizeLux(_ lux: Double, maxPlausibleLux: Double = ALSHardwareProfileCatalog.defaultConfig.maxPlausibleLux) -> Double {
         if lux == .infinity { return maxPlausibleLux }
         if lux == -.infinity || lux.isNaN { return 0.0 }
         guard lux.isFinite else { return 0.0 }
         return max(0.0, min(maxPlausibleLux, lux))
     }
 
-    static func blendedLux(fit: Double, relative: Double, weight: Double) -> Double {
+    static func blendedLux(
+        fit: Double,
+        relative: Double,
+        weight: Double,
+        maxPlausibleLux: Double = ALSHardwareProfileCatalog.defaultConfig.maxPlausibleLux
+    ) -> Double {
         let w = max(0.0, min(1.0, weight))
-        return sanitizeLux((1.0 - w) * fit + w * relative)
+        return sanitizeLux((1.0 - w) * fit + w * relative, maxPlausibleLux: maxPlausibleLux)
     }
 
-    static func relativeLux(normalizedX: Double) -> Double {
+    static func relativeLux(
+        normalizedX: Double,
+        minRelativeLux: Double = ALSHardwareProfileCatalog.defaultConfig.minRelativeLux,
+        maxRelativeLux: Double = ALSHardwareProfileCatalog.defaultConfig.maxRelativeLux,
+        relativeGamma: Double = ALSHardwareProfileCatalog.defaultConfig.relativeGamma
+    ) -> Double {
         let x = max(0.0, min(1.0, normalizedX))
         return minRelativeLux + (maxRelativeLux - minRelativeLux) * pow(x, relativeGamma)
     }
@@ -171,14 +181,20 @@ enum ALSComputation {
         return ("invalid", nil)
     }
 
-    static func fitCalibration(anchorA: (dx: Double, lux: Double), anchorB: (dx: Double, lux: Double)) -> (a: Double, p: Double)? {
+    static func fitCalibration(
+        anchorA: (dx: Double, lux: Double),
+        anchorB: (dx: Double, lux: Double),
+        minAnchorValue: Double = ALSHardwareProfileCatalog.defaultConfig.calibrationFitMinAnchorValue,
+        pMin: Double = ALSHardwareProfileCatalog.defaultConfig.calibrationPMin,
+        pMax: Double = ALSHardwareProfileCatalog.defaultConfig.calibrationPMax
+    ) -> (a: Double, p: Double)? {
         let a1 = anchorA
         let a2 = anchorB
-        guard a1.dx > 1e-6, a2.dx > 1e-6, a1.lux > 1e-6, a2.lux > 1e-6 else { return nil }
+        guard a1.dx > minAnchorValue, a2.dx > minAnchorValue, a1.lux > minAnchorValue, a2.lux > minAnchorValue else { return nil }
         guard a1.dx != a2.dx, a1.lux.isFinite, a2.lux.isFinite, a1.dx.isFinite, a2.dx.isFinite else { return nil }
         let p = log(a2.lux / a1.lux) / log(a2.dx / a1.dx)
         guard p.isFinite else { return nil }
-        let pClamped = max(0.8, min(1.8, p))
+        let pClamped = max(pMin, min(pMax, p))
         let a = a1.lux / pow(a1.dx, pClamped)
         guard a.isFinite, a > 0 else { return nil }
         return (a, pClamped)

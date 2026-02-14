@@ -39,11 +39,11 @@ enum ALSSample {
 }
 
 struct LuxCalibrator: Codable {
-    var a: Double = 20.701263635343665
-    var p: Double = 1.13652988767883
+    var a: Double = ALSHardwareProfileCatalog.defaultConfig.calibratorA
+    var p: Double = ALSHardwareProfileCatalog.defaultConfig.calibratorP
     // NOTE: xDark is intentionally pinned to 0.0 in the current model.
     // The exact historical rationale is unclear; preserve behavior and revisit later.
-    var xDark: Double = 0.0
+    var xDark: Double = ALSHardwareProfileCatalog.defaultConfig.calibratorXDark
 
     func estimateLux(decodedX: Double) -> Double {
         let dx = max(0.0, decodedX - xDark)

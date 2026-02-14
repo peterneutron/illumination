@@ -19,6 +19,10 @@ final class ALSManager {
 
     // Calibrator: decoded counts → estimated lux
     private var calibrator: LuxCalibrator = LuxCalibrator.load()
+    private var hardwareProfileID: ALSHardwareProfileID = .defaultProfile
+    private var hardwareProfile: ALSHardwareProfileConfig {
+        ALSHardwareProfileCatalog.config(for: hardwareProfileID)
+    }
 
     // Reader + sampling
     private var reader: AmbientLightReader?
@@ -31,16 +35,14 @@ final class ALSManager {
     private var rollingMaxDx: Double = 0
     private var lastDxDecay = Date()
     private var hasSunAnchor: Bool = false
-    private let sunDxTriggerConst: Double = 1200.0
-    private let relBlendMaxConst: Double = 0.25
-    private var warmupUntil: Date = Date().addingTimeInterval(2.0)
+    private var warmupUntil: Date = Date()
 
     private var lastGoodX: Double = 0
     private var lastGoodAt: Date = .distantPast
 
-    private let saturationApplyAfter: TimeInterval = 0.5  // seconds of continuous saturation before synthesizing
-    private let saturationBoost: Double = 1.15             // push above last good to reflect “very bright”
-    private let saturationFloorDx: Double = 1200.0         // sensor-space floor (Δx counts) used when synthesizing in direct sun
+    private var saturationApplyAfter: TimeInterval { hardwareProfile.saturationApplyAfter }
+    private var saturationBoost: Double { hardwareProfile.saturationBoost }
+    private var saturationFloorDx: Double { hardwareProfile.saturationFloorDx }
 
     // Auto mode
     private var profile: ALSProfile = .sunburst
@@ -70,54 +72,19 @@ final class ALSManager {
 
     // Thresholds + dwell from profile (brightness/enable policy; keep your semantics)
     private var onLux: Double {
-        // Thresholds for enabling Illumination (EDR overlay) per profile
-        // Aggressive trips earlier; Conservative requires stronger daylight
-        switch profile {
-        case .twilight:     return 8_000.0   // very early
-        case .daybreak:     return 12_000.0  // early
-        case .midday:       return 15_000.0  // bright window / light shade
-        case .sunburst:     return 25_000.0  // shade → outdoor
-        case .highNoon:     return 35_000.0  // strong daylight only
-        }
+        hardwareProfile.onLux(for: profile)
     }
     private var offLux: Double {
-        // Hysteresis off thresholds per profile
-        switch profile {
-        case .twilight:     return 5_000.0
-        case .daybreak:     return 8_000.0
-        case .midday:       return 10_000.0
-        case .sunburst:     return 18_000.0
-        case .highNoon:     return 25_000.0
-        }
+        hardwareProfile.offLux(for: profile)
     }
     private var onSeconds: Double {
-        // Dwell time before turning ON (shorter outside for snappy response)
-        switch profile {
-        case .twilight:     return 1.0
-        case .daybreak:     return 1.0
-        case .midday:       return 1.0
-        case .sunburst:     return 2.0
-        case .highNoon:     return 3.0
-        }
+        hardwareProfile.onSeconds(for: profile)
     }
     private var offSeconds: Double {
-        // Dwell time before turning OFF (longer to avoid flapping under passing clouds)
-        switch profile {
-        case .twilight:     return 2.0
-        case .daybreak:     return 3.0
-        case .midday:       return 2.0
-        case .sunburst:     return 4.0
-        case .highNoon:     return 6.0
-        }
+        hardwareProfile.offSeconds(for: profile)
     }
     private var rampStep: Double { // fraction toward target per sample
-        switch profile {
-        case .twilight: return 0.50
-        case .daybreak: return 0.45
-        case .midday: return 0.40
-        case .sunburst: return 0.25
-        case .highNoon: return 0.15
-        }
+        hardwareProfile.rampStep(for: profile)
     }
 
     private init() {
@@ -141,6 +108,8 @@ final class ALSManager {
         }
         autoEnabled = false
         setAutoEnabled(Settings.alsAutoEnabled)
+        hardwareProfileID = Settings.alsHardwareProfile
+        warmupUntil = Date().addingTimeInterval(hardwareProfile.blendWarmupSeconds)
         // Bootstrap-persist calibrator defaults on first run so a/p survive restarts
         if !LuxCalibrator.exists() {
             calibrator.save()
@@ -208,16 +177,26 @@ final class ALSManager {
         let xSmoothed = ema(decodedX, state: &lpState, dt: dt, tau: tauBase, mult: multBase)
         let fitLux = calibrator.estimateLux(decodedX: xSmoothed)
         let normalized = min(1.0, dx / max(rollingMaxDx, 1e-6))
-        let relLux = ALSComputation.relativeLux(normalizedX: normalized)
+        let relLux = ALSComputation.relativeLux(
+            normalizedX: normalized,
+            minRelativeLux: hardwareProfile.minRelativeLux,
+            maxRelativeLux: hardwareProfile.maxRelativeLux,
+            relativeGamma: hardwareProfile.relativeGamma
+        )
         let blendWeight = ALSComputation.blendWeight(
             rollingMaxDx: rollingMaxDx,
             hasSunAnchor: hasSunAnchor,
             now: now,
             warmupUntil: warmupUntil,
-            sunDxTrigger: sunDxTriggerConst,
-            relBlendMax: relBlendMaxConst
+            sunDxTrigger: hardwareProfile.sunDxTrigger,
+            relBlendMax: hardwareProfile.relBlendMax
         )
-        let finalLux = ALSComputation.blendedLux(fit: fitLux, relative: relLux, weight: blendWeight)
+        let finalLux = ALSComputation.blendedLux(
+            fit: fitLux,
+            relative: relLux,
+            weight: blendWeight,
+            maxPlausibleLux: hardwareProfile.maxPlausibleLux
+        )
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -279,16 +258,26 @@ final class ALSManager {
             let dxSm = max(0.0, xSmoothed - calibrator.xDark)
             updateRollingMaxDx(dxSm)
             let normalized = min(1.0, dxSm / max(rollingMaxDx, 1e-6))
-            let relLux = ALSComputation.relativeLux(normalizedX: normalized)
+            let relLux = ALSComputation.relativeLux(
+                normalizedX: normalized,
+                minRelativeLux: hardwareProfile.minRelativeLux,
+                maxRelativeLux: hardwareProfile.maxRelativeLux,
+                relativeGamma: hardwareProfile.relativeGamma
+            )
             let blendWeight = ALSComputation.blendWeight(
                 rollingMaxDx: rollingMaxDx,
                 hasSunAnchor: hasSunAnchor,
                 now: now,
                 warmupUntil: warmupUntil,
-                sunDxTrigger: sunDxTriggerConst,
-                relBlendMax: relBlendMaxConst
+                sunDxTrigger: hardwareProfile.sunDxTrigger,
+                relBlendMax: hardwareProfile.relBlendMax
             )
-            let finalLux = ALSComputation.blendedLux(fit: fitLux, relative: relLux, weight: blendWeight)
+            let finalLux = ALSComputation.blendedLux(
+                fit: fitLux,
+                relative: relLux,
+                weight: blendWeight,
+                maxPlausibleLux: hardwareProfile.maxPlausibleLux
+            )
 
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
@@ -337,13 +326,7 @@ final class ALSManager {
     // Profile-dependent smoothing parameters
     @inline(__always)
     private func smoothingParams() -> (tau: Double, mult: Double) {
-        switch profile {
-        case .twilight:     return (1.5, 1.6)  // quickest
-        case .daybreak:     return (1.6, 1.55)
-        case .midday:       return (1.8, 1.5)  // quicker attack
-        case .sunburst:     return (3.5, 1.0)
-        case .highNoon:     return (6.0, 0.8)  // extra calm indoors
-        }
+        hardwareProfile.smoothing(for: profile)
     }
 
     // EMA with time constant τ (seconds). alpha = 1 - exp(-dt/τ)
@@ -564,6 +547,7 @@ final class ALSManager {
 
     // MARK: - Profile API
     func getProfile() -> ALSProfile { profile }
+    func getHardwareProfileID() -> ALSHardwareProfileID { hardwareProfileID }
 
     func setProfile(_ newProfile: ALSProfile) {
         guard newProfile != profile else { return }
@@ -572,6 +556,16 @@ final class ALSManager {
         // Reset smoothing + dwell counters on profile change
         lpState = nil
         aboveCount = 0; belowCount = 0
+    }
+
+    func setHardwareProfileID(_ id: ALSHardwareProfileID) {
+        guard id != hardwareProfileID else { return }
+        hardwareProfileID = id
+        Settings.alsHardwareProfile = id
+        warmupUntil = Date().addingTimeInterval(hardwareProfile.blendWarmupSeconds)
+        lpState = nil
+        aboveCount = 0
+        belowCount = 0
     }
 
     // MARK: - Debug tuners API (kept minimal)
@@ -661,7 +655,13 @@ final class ALSManager {
     }
     func fitCalibrationFromAnchors() {
         guard let anchorA = calibAnchorA(), let anchorB = calibAnchorB() else { return }
-        guard let fitted = ALSComputation.fitCalibration(anchorA: (anchorA.dx, anchorA.lux), anchorB: (anchorB.dx, anchorB.lux)) else { return }
+        guard let fitted = ALSComputation.fitCalibration(
+            anchorA: (anchorA.dx, anchorA.lux),
+            anchorB: (anchorB.dx, anchorB.lux),
+            minAnchorValue: hardwareProfile.calibrationFitMinAnchorValue,
+            pMin: hardwareProfile.calibrationPMin,
+            pMax: hardwareProfile.calibrationPMax
+        ) else { return }
         var c = calibrator
         c.a = fitted.a
         c.p = fitted.p
@@ -678,7 +678,7 @@ final class ALSManager {
     // Set calibrator a/p with validation and persist
     func setCalibrator(a: Double, p: Double) {
         guard a.isFinite && a > 0 else { return }
-        guard p.isFinite && p > 0 && p < 4.0 else { return }
+        guard p.isFinite && p >= hardwareProfile.calibrationPMin && p <= hardwareProfile.calibrationPMax else { return }
         calibrator.a = a
         calibrator.p = p
         calibrator.save()

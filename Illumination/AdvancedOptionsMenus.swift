@@ -117,6 +117,27 @@ struct DebugMenu: View {
                 Button(action: { vm.setLuxStepMode(3) }) { HStack { Text("1 k lx"); if vm.luxStepMode == 3 { Image(systemName: "checkmark") } } }
             }
             Divider()
+            Menu("ALS Hardware Profile: \(vm.alsHardwareProfileName)") {
+                ForEach(ALSHardwareProfileID.allCases, id: \.self) { profile in
+                    Button(action: { vm.setALSHardwareProfile(profile) }) {
+                        HStack {
+                            Text(profile.displayName)
+                            if vm.alsHardwareProfileID == profile { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+            }
+            Menu("EDR Policy Profile: \(vm.edrPolicyProfileName)") {
+                ForEach(EDRPolicyProfileID.allCases, id: \.self) { profile in
+                    Button(action: { vm.setEDRPolicyProfile(profile) }) {
+                        HStack {
+                            Text(profile.displayName)
+                            if vm.edrPolicyProfileID == profile { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+            }
+            Divider()
             Menu("Overlay") {
                 Menu("FPS: \(vm.overlayFPS)") {
                     ForEach([5, 10, 15, 30, 60, 120], id: \.self) { fps in

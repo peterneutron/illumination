@@ -35,6 +35,8 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
 - ALS `xDark` is intentionally pinned to **0.0** in the current model. This is preserved for compatibility and should be revisited with explicit recalibration experiments.
 - `HDRRegionSampler` and HDR ducking remain experimental and primarily surfaced through Debug/Experimental controls.
 - ALS trace/replay controls are intentionally Debug-only in this phase.
+- Algorithm constants are split into three tiers: immutable decode/sentinel protocol constants, ALS hardware profile constants, and EDR policy profile constants.
+- Current defaults are `HW_MBP16L23` (ALS hardware profile) and `EDR_MBP16L23` (EDR policy profile), selectable in Debug menu only.
 
 ## Getting Started: Building from Source
 

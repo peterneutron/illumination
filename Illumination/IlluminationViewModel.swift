@@ -96,6 +96,12 @@ final class IlluminationViewModel: ObservableObject {
     func setALSProfileMidday() { ALSManager.shared.setProfile(.midday); objectWillChange.send() }
     func setALSProfileSunburst() { ALSManager.shared.setProfile(.sunburst); objectWillChange.send() }
     func setALSProfileHighNoon() { ALSManager.shared.setProfile(.highNoon); objectWillChange.send() }
+    var alsHardwareProfileID: ALSHardwareProfileID { ALSManager.shared.getHardwareProfileID() }
+    var alsHardwareProfileName: String { alsHardwareProfileID.displayName }
+    func setALSHardwareProfile(_ id: ALSHardwareProfileID) { ALSManager.shared.setHardwareProfileID(id); objectWillChange.send() }
+    var edrPolicyProfileID: EDRPolicyProfileID { controller.edrPolicyProfileIDValue() }
+    var edrPolicyProfileName: String { edrPolicyProfileID.displayName }
+    func setEDRPolicyProfile(_ id: EDRPolicyProfileID) { controller.setEDRPolicyProfileID(id); objectWillChange.send() }
 
     // MARK: - Polling control
     func startBackgroundPolling() {
@@ -166,6 +172,8 @@ final class IlluminationViewModel: ObservableObject {
         }
         let cp = ALSManager.shared.calibratorParams()
         lines.append(String(format: "Calibrator: a=%.5f, p=%.5f, xDark=%.5f", cp.a, cp.p, cp.xDark))
+        lines.append("ALS HW Profile: \(alsHardwareProfileName)")
+        lines.append("EDR Policy Profile: \(edrPolicyProfileName)")
         let policy = controller.appPolicyDiagnostics()
         lines.append("App Policy Frontmost: \(policy.frontmostBundleID)")
         lines.append("App Policy Denylisted: \(policy.denylisted ? "yes" : "no")")

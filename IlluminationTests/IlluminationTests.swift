@@ -20,6 +20,8 @@ struct IlluminationTests {
         #expect(Settings.entryMinPercent == 1.0)
         #expect(Settings.overlayFPS == 30)
         #expect(Settings.luxStepMode == 2)
+        #expect(Settings.alsHardwareProfile == .hwMbp16l23)
+        #expect(Settings.edrPolicyProfile == .edrMbp16l23)
 
         Settings.entryMinPercent = 99.0
         Settings.overlayFPS = 1000
@@ -32,6 +34,33 @@ struct IlluminationTests {
         #expect(Settings.hdrThreshold == 3.0)
         #expect(Settings.tileSize == 1)
         #expect(Settings.appPolicyScope == 1)
+    }
+
+    @Test("Profile settings fallback to defaults on invalid raw values")
+    func profileSettingsFallback() {
+        let suiteName = "IlluminationTests.ProfileSettingsFallback"
+        guard let suite = UserDefaults(suiteName: suiteName) else {
+            #expect(Bool(false))
+            return
+        }
+        suite.removePersistentDomain(forName: suiteName)
+        Settings.useStore(suite)
+        defer {
+            Settings.resetStore()
+            suite.removePersistentDomain(forName: suiteName)
+        }
+
+        suite.set("INVALID_HW", forKey: Settings.Key.alsHardwareProfile.rawValue)
+        suite.set("INVALID_EDR", forKey: Settings.Key.edrPolicyProfile.rawValue)
+
+        #expect(Settings.alsHardwareProfile == .defaultProfile)
+        #expect(Settings.edrPolicyProfile == .defaultProfile)
+    }
+
+    @Test("Default algorithm profile identifiers are locked")
+    func defaultAlgorithmProfileIdentifiers() {
+        #expect(ALSHardwareProfileID.defaultProfile.rawValue == "HW_MBP16L23")
+        #expect(EDRPolicyProfileID.defaultProfile.rawValue == "EDR_MBP16L23")
     }
 
     @Test("Corrupt calibrator data falls back safely")
