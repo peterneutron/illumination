@@ -138,6 +138,15 @@ struct IlluminationTests {
         #expect(floorBound == 1.0)
     }
 
+    @Test("Tile is suspended only for manual mode at zero percent")
+    func tileSuspendPolicy() {
+        #expect(BrightnessController.shouldSuspendTileForCurrentMode(masterEnabled: true, autoEnabled: false, percent: 0.0))
+        #expect(BrightnessController.shouldSuspendTileForCurrentMode(masterEnabled: true, autoEnabled: false, percent: -1.0))
+        #expect(BrightnessController.shouldSuspendTileForCurrentMode(masterEnabled: true, autoEnabled: false, percent: 0.1) == false)
+        #expect(BrightnessController.shouldSuspendTileForCurrentMode(masterEnabled: true, autoEnabled: true, percent: 0.0) == false)
+        #expect(BrightnessController.shouldSuspendTileForCurrentMode(masterEnabled: false, autoEnabled: false, percent: 0.0) == false)
+    }
+
     @Test("Master control state resolver preserves auto intent precedence")
     func masterControlStateResolver() {
         #expect(IlluminationViewModel.resolveMasterControlState(masterEnabled: false, autoEnabled: false) == .off)

@@ -123,6 +123,7 @@ final class BrightnessController {
             technique.adjust(factor: Float(factor))
             technique.setOverlayConfig(fullsize: overlayFullsizeEnabled(), fps: overlayFPSValue())
         }
+        applyTileRuntimePolicyOnMain()
 
         // Listen for screen and wake events
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged(_:)), name: NSApplication.didChangeScreenParametersNotification, object: nil)
@@ -175,6 +176,7 @@ final class BrightnessController {
             edrRecoveryTimer = nil
             technique.disable()
         }
+        applyTileRuntimePolicyOnMain()
     }
 
     // Expose current master-enabled state for collaborators
@@ -208,6 +210,7 @@ final class BrightnessController {
             if enabled {
                 technique.adjust(factor: Float(self.factor))
             }
+            applyTileRuntimePolicyOnMain()
         }
     }
 
@@ -479,6 +482,32 @@ final class BrightnessController {
         let preClamped = Swift.min(Swift.max(1.0, rawCap), 1.70)
         let guardApplied = guardEnabled ? Swift.max(0.70, Swift.min(0.98, guardFactor)) : 1.0
         return Swift.max(1.0, preClamped * guardApplied)
+    }
+
+    static func shouldSuspendTileForCurrentMode(masterEnabled: Bool, autoEnabled: Bool, percent: Double) -> Bool {
+        guard masterEnabled else { return false }
+        guard !autoEnabled else { return false }
+        return percent <= 0.0
+    }
+
+    private func applyTileRuntimePolicyOnMain() {
+        let auto = Settings.alsAutoEnabled
+        let suspend = BrightnessController.shouldSuspendTileForCurrentMode(
+            masterEnabled: enabled,
+            autoEnabled: auto,
+            percent: userPercent
+        )
+        if suspend {
+            TileFeature.shared.suspendForALS()
+        } else {
+            TileFeature.shared.resumeAfterALS()
+        }
+    }
+
+    func reapplyTileRuntimePolicy() {
+        onMainSync {
+            applyTileRuntimePolicyOnMain()
+        }
     }
 
     // MARK: - Overlay controls

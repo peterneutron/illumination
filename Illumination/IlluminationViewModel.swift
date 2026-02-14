@@ -106,6 +106,7 @@ final class IlluminationViewModel: ObservableObject {
         }
         alsAutoEnabled = on
         ALSManager.shared.setAutoEnabled(on)
+        controller.reapplyTileRuntimePolicy()
         syncFromController()
     }
 
