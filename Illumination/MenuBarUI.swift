@@ -103,9 +103,7 @@ struct IlluminationMenuView: View {
                 }
                 PercentSlider(
                     value: Binding(
-                        // Show 0% while disabled to match the label,
-                        // but keep the underlying intent untouched.
-                        get: { vm.enabled ? vm.userPercent : 0.0 },
+                        get: { vm.sliderDisplayPercent },
                         set: { vm.setPercent($0) }
                     ),
                     autoEnabled: vm.alsAutoEnabled,
@@ -176,8 +174,8 @@ struct IlluminationMenuView: View {
     }
 
     private func tileModeDisplay(vm: IlluminationViewModel) -> String {
-        guard (vm.enabled || vm.alsAutoEnabled) else { return String(localized: "Off") }
-        return vm.tileEnabled ? (vm.tileFullOpacity ? String(localized: "Full") : String(localized: "Low")) : String(localized: "Off")
+        guard (vm.enabled || vm.alsAutoEnabled), vm.runtimeTileEnabled, vm.tileVisibleNow else { return String(localized: "Off") }
+        return vm.tileFullOpacity ? String(localized: "Full") : String(localized: "Low")
     }
 
     private func scopeDisplay(vm: IlluminationViewModel) -> String {
@@ -353,7 +351,7 @@ private struct LiveLuxLabel: NSViewRepresentable {
                 let text = lux.map { Self.formatLux($0) } ?? "— lx"
                 label.stringValue = text
             }
-            if let t = timer { RunLoop.main.add(t, forMode: .eventTracking) }
+            if let t = timer { RunLoop.main.add(t, forMode: .common) }
         }
         deinit { timer?.invalidate() }
         static func formatLux(_ value: Double) -> String {
@@ -395,10 +393,16 @@ private struct LivePercentLabel: NSViewRepresentable {
             timer?.invalidate(); timer = nil
             timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
                 let bc = BrightnessController.shared
-                let pct = bc.appIsEnabled() ? Int(round(bc.currentUserPercent())) : 0
+                let state = bc.uiStateSnapshot()
+                let pct = Int(round(IlluminationViewModel.sliderDisplayPercent(
+                    autoEnabled: state.mode == .auto,
+                    masterEnabled: state.masterEnabled,
+                    effectivePercent: state.effectivePercent,
+                    manualPercent: state.manualPercent
+                )))
                 label.stringValue = "\(pct)%"
             }
-            if let t = timer { RunLoop.main.add(t, forMode: .eventTracking) }
+            if let t = timer { RunLoop.main.add(t, forMode: .common) }
         }
         deinit { timer?.invalidate() }
     }
@@ -422,7 +426,8 @@ private struct PercentSlider: NSViewRepresentable {
     func updateNSView(_ nsView: NSSlider, context: Context) {
         context.coordinator.isAutoEnabled = autoEnabled
         context.coordinator.masterEnabled = masterEnabled
-        let displayValue = masterEnabled ? value : 0.0
+        guard !autoEnabled else { return }
+        let displayValue = min(100.0, max(0.0, masterEnabled ? value : 0.0))
         if abs(nsView.doubleValue - displayValue) > 0.0001 {
             nsView.doubleValue = displayValue
         }
@@ -438,24 +443,27 @@ private struct PercentSlider: NSViewRepresentable {
         weak var sliderRef: NSSlider?
 
         init(value: Binding<Double>) { self.value = value }
-
         func start(slider: NSSlider) {
             sliderRef = slider
-            timer?.invalidate(); timer = nil
-            timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-                guard let self = self, self.isAutoEnabled, let slider = self.sliderRef else { return }
-                let bc = BrightnessController.shared
-                let pct = bc.appIsEnabled() ? bc.currentUserPercent() : 0.0
-                let rounded = round(pct)
-                if abs(slider.doubleValue - rounded) > 0.0001 {
-                    slider.doubleValue = rounded
+            timer?.invalidate()
+            timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+                guard let self = self, let slider = self.sliderRef, self.isAutoEnabled else { return }
+                let state = BrightnessController.shared.uiStateSnapshot()
+                let display = IlluminationViewModel.sliderDisplayPercent(
+                    autoEnabled: true,
+                    masterEnabled: state.masterEnabled,
+                    effectivePercent: state.effectivePercent,
+                    manualPercent: state.manualPercent
+                )
+                if abs(slider.doubleValue - display) > 0.0001 {
+                    slider.doubleValue = display
                 }
             }
-            if let t = timer { RunLoop.main.add(t, forMode: .eventTracking) }
+            if let t = timer { RunLoop.main.add(t, forMode: .common) }
         }
-
         deinit { timer?.invalidate() }
         @objc func changed(_ sender: NSSlider) {
+            guard !isAutoEnabled, masterEnabled else { return }
             let rounded = round(sender.doubleValue)
             if abs(rounded - value.wrappedValue) > 0.0001 {
                 value.wrappedValue = min(100.0, max(0.0, rounded))

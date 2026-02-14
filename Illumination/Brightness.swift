@@ -6,6 +6,26 @@
 import Foundation
 import AppKit
 
+enum RuntimeControlMode: String, Codable {
+    case off
+    case manual
+    case auto
+}
+
+struct RuntimeUIState: Equatable {
+    let masterEnabled: Bool
+    let mode: RuntimeControlMode
+    let scope: Int
+    let effectivePercent: Double
+    let manualPercent: Double
+    let tileEnabled: Bool
+    let tileVisibleNow: Bool
+    let denylistBlocked: Bool
+    let blockedAppName: String?
+    let appPolicyDiagnostics: String
+    let experimentalHDRDiagnostics: String
+}
+
 final class BrightnessController {
     static let shared = BrightnessController()
 
@@ -635,6 +655,35 @@ final class BrightnessController {
             guardFactor = clamped
             Settings.guardFactor = clamped
         }
+    }
+
+    func uiStateSnapshot() -> RuntimeUIState {
+        onMainSync {
+            uiStateSnapshotOnMain()
+        }
+    }
+
+    private func uiStateSnapshotOnMain() -> RuntimeUIState {
+        let autoEnabled = ALSManager.shared.autoEnabled
+        let mode: RuntimeControlMode = autoEnabled ? .auto : (enabled ? .manual : .off)
+        let cap = currentGammaCap()
+        let effective = enabled ? BrightnessController.percent(forFactor: factor, cap: cap) : 0.0
+        let blockedName: String? = (denylistBlocked && appPolicyFrontmostBundleID != "unknown") ? appPolicyFrontmostBundleID : nil
+        let appDiag = "scope=\(appPolicyScope.displayName), result=\(appPolicyResult), denylisted=\(appPolicyDenylisted ? "yes" : "no"), frontmost=\(appPolicyFrontmostBundleID)"
+        let hdrDiag = "gate=\(hdrLastGate), sampler=\(hdrLastSamplerStatus), enabled=\(hdrAwareEnabled ? "yes" : "no")"
+        return RuntimeUIState(
+            masterEnabled: enabled,
+            mode: mode,
+            scope: appPolicyScope.rawValue,
+            effectivePercent: effective,
+            manualPercent: userPercent,
+            tileEnabled: TileFeature.shared.enabled,
+            tileVisibleNow: TileFeature.shared.isCurrentlyVisible,
+            denylistBlocked: denylistBlocked,
+            blockedAppName: blockedName,
+            appPolicyDiagnostics: appDiag,
+            experimentalHDRDiagnostics: hdrDiag
+        )
     }
 }
     // MARK: - HDR ducking engine

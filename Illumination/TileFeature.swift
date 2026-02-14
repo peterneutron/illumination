@@ -59,6 +59,9 @@ final class TileFeature {
     }
 
     var assetAvailable: Bool { HDRTileManager.shared.assetAvailable }
+    var isCurrentlyVisible: Bool {
+        enabled && !masterSuspended && !alsSuspended && (panelController?.window?.isVisible == true)
+    }
 
     // MARK: - Control
     func toggleEnabled() { enabled.toggle() }
