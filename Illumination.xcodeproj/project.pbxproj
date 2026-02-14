@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		070D2E82CBCD83A90B97AAFD /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B158BA0F8BEE47016176A427 /* Settings.swift */; };
+		09EAC31EDD83F8F8B4727EDB /* AppDetectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F1787B8A6BD8098C2B9198E /* AppDetectionViews.swift */; };
 		0B0BFBFF0F6A215713F94D5A /* HDRTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEFBC9390DF31164CC4CD848 /* HDRTile.swift */; };
 		0C4E5E6FB2C38D08E02BAFB5 /* IlluminationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4D517F849D61F2B46F909FA /* IlluminationTests.swift */; };
 		164BC914D3D1FF70456182D2 /* DisplayStateProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAE4C7F9FDA51B1F1BB99350 /* DisplayStateProbe.swift */; };
@@ -23,6 +24,7 @@
 		9CF94A427570BA9F8DAA3572 /* IlluminationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C5B4AB118C68AC72B50BCD4 /* IlluminationUITests.swift */; };
 		A80CCD213EDC318906FB4CAF /* RuntimeDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97B220D70B5EA395C4708F1 /* RuntimeDiagnostics.swift */; };
 		ABB01C1BF8967F238883C4E6 /* Overlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D897A2CA1E637C998F7328B3 /* Overlay.swift */; };
+		B03645D077FF7712156506E2 /* AdvancedOptionsMenus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C41DF8C81AD0D73AF82A8F /* AdvancedOptionsMenus.swift */; };
 		BF1EE06C4CA4740389B7BAC2 /* HDRRegionSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E70B849C29B0F2F63A39CCE0 /* HDRRegionSampler.swift */; };
 		C28BDB81F5FB5B3A81378C74 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1D74E2B2ED87221EF7CAB1B3 /* Assets.xcassets */; };
 		C88F805B24B58A60C9AF1437 /* ALSComputation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A3FEAD7A9BCC7EE36D49C10 /* ALSComputation.swift */; };
@@ -56,6 +58,7 @@
 		1482B2B20B0DA9DC04C9BE69 /* IlluminationTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IlluminationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1D74E2B2ED87221EF7CAB1B3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2226CFD2B0B73C68FCC225AC /* TilePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TilePanel.swift; sourceTree = "<group>"; };
+		2F1787B8A6BD8098C2B9198E /* AppDetectionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDetectionViews.swift; sourceTree = "<group>"; };
 		4320C584B2087058CD0FD62F /* OverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindow.swift; sourceTree = "<group>"; };
 		49E679BF0F06968528066BEC /* HDRTile.mp4 */ = {isa = PBXFileReference; path = HDRTile.mp4; sourceTree = "<group>"; };
 		4BA9A734FD3BB5FCC4362B2A /* SystemInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemInfo.swift; sourceTree = "<group>"; };
@@ -69,6 +72,7 @@
 		8729A23E9B7E3CD21C7616AE /* Illumination.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Illumination.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		880D0AA64BEF56E9CEF4B9D9 /* InstalledAppDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstalledAppDiscovery.swift; sourceTree = "<group>"; };
 		9A3FEAD7A9BCC7EE36D49C10 /* ALSComputation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ALSComputation.swift; sourceTree = "<group>"; };
+		A6C41DF8C81AD0D73AF82A8F /* AdvancedOptionsMenus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedOptionsMenus.swift; sourceTree = "<group>"; };
 		B158BA0F8BEE47016176A427 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		B97B220D70B5EA395C4708F1 /* RuntimeDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeDiagnostics.swift; sourceTree = "<group>"; };
 		CAE4C7F9FDA51B1F1BB99350 /* DisplayStateProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayStateProbe.swift; sourceTree = "<group>"; };
@@ -84,8 +88,10 @@
 		0B96EB3B41F0011BB0CD1F14 /* Illumination */ = {
 			isa = PBXGroup;
 			children = (
+				A6C41DF8C81AD0D73AF82A8F /* AdvancedOptionsMenus.swift */,
 				9A3FEAD7A9BCC7EE36D49C10 /* ALSComputation.swift */,
 				F8FABC729ADCF702FE9C45D5 /* ALSManager.swift */,
+				2F1787B8A6BD8098C2B9198E /* AppDetectionViews.swift */,
 				1D74E2B2ED87221EF7CAB1B3 /* Assets.xcassets */,
 				620B31C8429296B8ABB8326E /* Brightness.swift */,
 				CAE4C7F9FDA51B1F1BB99350 /* DisplayStateProbe.swift */,
@@ -267,6 +273,8 @@
 			files = (
 				C88F805B24B58A60C9AF1437 /* ALSComputation.swift in Sources */,
 				E64ADD19A4E4D1851B62CCE5 /* ALSManager.swift in Sources */,
+				B03645D077FF7712156506E2 /* AdvancedOptionsMenus.swift in Sources */,
+				09EAC31EDD83F8F8B4727EDB /* AppDetectionViews.swift in Sources */,
 				50960829434847E113C16B43 /* Brightness.swift in Sources */,
 				164BC914D3D1FF70456182D2 /* DisplayStateProbe.swift in Sources */,
 				7B7F9B2C526335411343E886 /* HDRAppList.swift in Sources */,
