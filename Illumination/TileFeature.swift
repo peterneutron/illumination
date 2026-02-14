@@ -12,6 +12,9 @@ final class TileFeature {
     private var observersInstalled = false
     private var masterSuspended = false
     private var alsSuspended = false
+    private var pendingPanelRefreshWorkItem: DispatchWorkItem?
+    private var pendingPanelBringToFront: Bool = false
+    private let panelRefreshDebounceInterval: TimeInterval = 0.2
 
     private init() {
         // Ensure asset availability is scanned at startup
@@ -104,16 +107,44 @@ final class TileFeature {
     }
 
     @objc private func activeSpaceChanged(_ note: Notification) {
-        guard enabled, let panel = panelController else { return }
-        if let sc = NSScreen.main { panel.reposition(to: sc) }
-        panel.bringToActiveSpace()
-        panel.updateFrame(tileSize: size, fullscreen: false)
-        applyCurrentPresentation()
+        schedulePanelRefresh(bringToFront: true)
     }
 
     @objc private func screenParamsChanged(_ note: Notification) {
-        guard let panel = panelController else { return }
+        schedulePanelRefresh(bringToFront: false)
+    }
+
+    private func schedulePanelRefresh(bringToFront: Bool) {
+        guard enabled, let panel = panelController else { return }
+        pendingPanelBringToFront = pendingPanelBringToFront || bringToFront
+        pendingPanelRefreshWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingPanelRefreshWorkItem = nil
+            guard self.enabled else { return }
+            if let sc = NSScreen.main { panel.reposition(to: sc) }
+            if self.pendingPanelBringToFront {
+                panel.bringToActiveSpace()
+            }
+            self.pendingPanelBringToFront = false
+            panel.updateFrame(tileSize: self.size, fullscreen: false)
+            self.applyCurrentPresentation()
+        }
+        pendingPanelRefreshWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + panelRefreshDebounceInterval, execute: work)
+    }
+
+    private func cancelPendingPanelRefresh() {
+        pendingPanelRefreshWorkItem?.cancel()
+        pendingPanelRefreshWorkItem = nil
+        pendingPanelBringToFront = false
+    }
+
+    private func refreshPanelImmediately(bringToFront: Bool) {
+        cancelPendingPanelRefresh()
+        guard enabled, let panel = panelController else { return }
         if let sc = NSScreen.main { panel.reposition(to: sc) }
+        if bringToFront { panel.bringToActiveSpace() }
         panel.updateFrame(tileSize: size, fullscreen: false)
         applyCurrentPresentation()
     }
@@ -123,6 +154,7 @@ final class TileFeature {
 extension TileFeature {
     func suspendForMasterDisable() {
         masterSuspended = true
+        cancelPendingPanelRefresh()
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             // Detach visuals without changing the user's enabled preference
@@ -137,11 +169,13 @@ extension TileFeature {
         guard enabled else { return }
         DispatchQueue.main.async { [weak self] in
             self?.enable()
+            self?.refreshPanelImmediately(bringToFront: true)
         }
     }
 
     func suspendForALS() {
         alsSuspended = true
+        cancelPendingPanelRefresh()
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             HDRTileManager.shared.detach()
@@ -154,6 +188,7 @@ extension TileFeature {
         guard enabled else { return }
         DispatchQueue.main.async { [weak self] in
             self?.enable()
+            self?.refreshPanelImmediately(bringToFront: false)
         }
     }
 }

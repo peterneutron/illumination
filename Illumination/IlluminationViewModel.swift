@@ -25,10 +25,13 @@ final class IlluminationViewModel: ObservableObject {
     @Published private(set) var appPickerLoading: Bool = false
     @Published private(set) var alsTraceReplaySummary: String = "ALS replay: no trace events"
     @Published private(set) var launchAtLoginError: String = ""
+    @Published private(set) var runAtLoginEnabled: Bool = false
+    @Published private(set) var runAtLoginStatusLabel: String = ""
 
     private let controller = BrightnessController.shared
     private var timer: Timer?
     private var autoModeBeforeMasterOff: Bool = false
+    private var uiStateObserver: NSObjectProtocol?
 
     private func applyRuntimeState(_ state: RuntimeUIState) {
         enabled = state.masterEnabled
@@ -46,6 +49,9 @@ final class IlluminationViewModel: ObservableObject {
         if alsAvailable != nextALSAvailable {
             alsAvailable = nextALSAvailable
         }
+    }
+
+    private func refreshEDRSupportIfNeeded() {
         if controller.currentGammaCapDetails().sawEDR && edrUnsupportedConfirmed {
             edrUnsupportedConfirmed = false
         }
@@ -64,12 +70,18 @@ final class IlluminationViewModel: ObservableObject {
         runtimeMode = snapshot.mode
         alsAutoEnabled = snapshot.mode == .auto
         controller.setEnabled(enabled)
+        installUIStateObserver()
         startBackgroundPolling()
         // Initial capability probe with retry before gating
         performEDRCheckWithRetry()
     }
 
-    deinit { timer?.invalidate() }
+    deinit {
+        timer?.invalidate()
+        if let uiStateObserver {
+            NotificationCenter.default.removeObserver(uiStateObserver)
+        }
+    }
 
     // MARK: - Intents
     func setEnabled(_ on: Bool) {
@@ -172,12 +184,14 @@ final class IlluminationViewModel: ObservableObject {
     func startBackgroundPolling() {
         guard timer == nil else { return }
         syncFromController()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        refreshEDRSupportIfNeeded()
+        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.syncFromController()
+                self?.refreshEDRSupportIfNeeded()
             }
         }
-        timer?.tolerance = 0.2
+        timer?.tolerance = 0.4
         if let t = timer { RunLoop.main.add(t, forMode: .common) }
     }
 
@@ -188,6 +202,32 @@ final class IlluminationViewModel: ObservableObject {
 
     func refreshNow() {
         syncFromController()
+        refreshEDRSupportIfNeeded()
+    }
+
+    func menuDidOpen() {
+        controller.setMenuOpenForLiveUI(true)
+        refreshLaunchAtLoginStatusOnMenuOpen()
+        refreshNow()
+        stopBackgroundPolling()
+    }
+
+    func menuDidClose() {
+        controller.setMenuOpenForLiveUI(false)
+        startBackgroundPolling()
+    }
+
+    private func installUIStateObserver() {
+        guard uiStateObserver == nil else { return }
+        uiStateObserver = NotificationCenter.default.addObserver(
+            forName: .brightnessControllerUIStateDidChange,
+            object: controller,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.syncFromController()
+            }
+        }
     }
 
     // MARK: - Derived status
@@ -353,8 +393,16 @@ final class IlluminationViewModel: ObservableObject {
 
     // MARK: - Advanced Options wrappers
     var supportsEDR: Bool { controller.currentGammaCapDetails().sawEDR }
-    var runAtLoginEnabled: Bool { LaunchAtLoginManager.shared.isEnabled }
-    var runAtLoginStatusLabel: String { LaunchAtLoginManager.shared.statusLabel }
+    private func refreshLaunchAtLoginStatus() {
+        let status = LaunchAtLoginManager.shared.status
+        runAtLoginEnabled = (status == .enabled)
+        runAtLoginStatusLabel = LaunchAtLoginManager.statusLabel(for: status)
+    }
+
+    func refreshLaunchAtLoginStatusOnMenuOpen() {
+        refreshLaunchAtLoginStatus()
+    }
+
     func setRunAtLogin(_ enabled: Bool) {
         do {
             try LaunchAtLoginManager.shared.setEnabled(enabled)
@@ -362,6 +410,7 @@ final class IlluminationViewModel: ObservableObject {
         } catch {
             launchAtLoginError = error.localizedDescription
         }
+        refreshLaunchAtLoginStatus()
         objectWillChange.send()
     }
     var guardEnabled: Bool { controller.isGuardEnabled() }

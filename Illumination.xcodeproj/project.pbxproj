@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -72,7 +72,7 @@
 		362FDEB4CBD3D85604CAF5B8 /* AppPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPolicy.swift; sourceTree = "<group>"; };
 		3CD2FF21063716414635DABC /* ALSTraceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ALSTraceTests.swift; sourceTree = "<group>"; };
 		4320C584B2087058CD0FD62F /* OverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindow.swift; sourceTree = "<group>"; };
-		49E679BF0F06968528066BEC /* HDRTile.mp4 */ = {isa = PBXFileReference; path = HDRTile.mp4; sourceTree = "<group>"; };
+		49E679BF0F06968528066BEC /* HDRTile.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = HDRTile.mp4; sourceTree = "<group>"; };
 		4BA9A734FD3BB5FCC4362B2A /* SystemInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemInfo.swift; sourceTree = "<group>"; };
 		52F48D5DA2825882F15ACD05 /* AlgorithmProfiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlgorithmProfiles.swift; sourceTree = "<group>"; };
 		557AD4D677E272316445B950 /* IlluminationApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IlluminationApp.swift; sourceTree = "<group>"; };
@@ -246,7 +246,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					2C6F36F207E1AC7C906C8326 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					AB54E483A8C3A0B158C9B7F9 = {
@@ -271,7 +270,6 @@
 			);
 			mainGroup = 7BE40B172F7260A9C38812D3;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -455,6 +453,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = ;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Illumination;
@@ -523,6 +522,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = ;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Illumination;

@@ -147,6 +147,55 @@ struct IlluminationTests {
         #expect(BrightnessController.shouldSuspendTileForCurrentMode(masterEnabled: false, autoEnabled: false, percent: 0.0) == false)
     }
 
+    @Test("Tile suspend hysteresis avoids 0% edge churn")
+    func tileSuspendHysteresisPolicy() {
+        #expect(
+            BrightnessController.nextTileSuspendState(
+                masterEnabled: true,
+                autoEnabled: false,
+                percent: 0.0,
+                previousSuspendState: false,
+                resumeThresholdPercent: 0.5
+            )
+        )
+        #expect(
+            BrightnessController.nextTileSuspendState(
+                masterEnabled: true,
+                autoEnabled: false,
+                percent: 0.2,
+                previousSuspendState: true,
+                resumeThresholdPercent: 0.5
+            )
+        )
+        #expect(
+            BrightnessController.nextTileSuspendState(
+                masterEnabled: true,
+                autoEnabled: false,
+                percent: 0.6,
+                previousSuspendState: true,
+                resumeThresholdPercent: 0.5
+            ) == false
+        )
+        #expect(
+            BrightnessController.nextTileSuspendState(
+                masterEnabled: true,
+                autoEnabled: true,
+                percent: 0.0,
+                previousSuspendState: true,
+                resumeThresholdPercent: 0.5
+            ) == false
+        )
+    }
+
+    @Test("UI percent quantization is stable and bounded")
+    func uiPercentQuantization() {
+        #expect(BrightnessController.quantizedPercent(0.01, step: 0.5) == 0.0)
+        #expect(BrightnessController.quantizedPercent(0.26, step: 0.5) == 0.5)
+        #expect(BrightnessController.quantizedPercent(99.9, step: 0.5) == 100.0)
+        #expect(BrightnessController.quantizedPercent(-5.0, step: 1.0) == 0.0)
+        #expect(BrightnessController.quantizedPercent(150.0, step: 1.0) == 100.0)
+    }
+
     @Test("Master control state resolver preserves auto intent precedence")
     func masterControlStateResolver() {
         #expect(IlluminationViewModel.resolveMasterControlState(masterEnabled: false, autoEnabled: false) == .off)
@@ -348,6 +397,26 @@ struct IlluminationTests {
         #expect(HDRAppList.shouldUseCachedFrontmost(lastFetchAt: now, now: shortlyAfter, minInterval: 0.25))
         #expect(HDRAppList.shouldUseCachedFrontmost(lastFetchAt: now, now: later, minInterval: 0.25) == false)
         #expect(HDRAppList.shouldUseCachedFrontmost(lastFetchAt: now, now: later, minInterval: 0.0) == false)
+    }
+
+    @Test("Display probe trigger modes are deterministic")
+    func displayProbeTriggerModes() {
+        #expect(BrightnessController.displayProbeExecutionMode(for: .screensChanged) == .debounced)
+        #expect(BrightnessController.displayProbeExecutionMode(for: .wake) == .immediate)
+        #expect(BrightnessController.displayProbeExecutionMode(for: .profileChange) == .immediate)
+        #expect(BrightnessController.displayProbeExecutionMode(for: .guardChange) == .immediate)
+    }
+
+    @Test("Trailing debounce helper behavior is deterministic")
+    func trailingDebounceHelpers() {
+        #expect(BrightnessController.shouldUseTrailingDebounce(existingPendingWork: true))
+        #expect(BrightnessController.shouldUseTrailingDebounce(existingPendingWork: false) == false)
+
+        let now = Date()
+        let insideWindow = now.addingTimeInterval(0.1)
+        let afterWindow = now.addingTimeInterval(0.3)
+        #expect(BrightnessController.shouldRunDebouncedProbe(lastEventAt: now, now: insideWindow, debounceInterval: 0.25) == false)
+        #expect(BrightnessController.shouldRunDebouncedProbe(lastEventAt: now, now: afterWindow, debounceInterval: 0.25))
     }
 
     @Test("Launch at login status labels are stable")

@@ -2,9 +2,14 @@
 //  Brightness.swift
 //  Illumination
 //
+// swiftlint:disable file_length
 
 import Foundation
 import AppKit
+
+extension Notification.Name {
+    static let brightnessControllerUIStateDidChange = Notification.Name("BrightnessControllerUIStateDidChange")
+}
 
 enum RuntimeControlMode: String, Codable {
     case off
@@ -28,6 +33,18 @@ struct RuntimeUIState: Equatable {
 
 final class BrightnessController {
     static let shared = BrightnessController()
+
+    enum DisplayProbeTrigger {
+        case screensChanged
+        case wake
+        case profileChange
+        case guardChange
+    }
+
+    enum DisplayProbeExecutionMode {
+        case debounced
+        case immediate
+    }
 
     private typealias CapDetails = (
         cap: Double,
@@ -90,6 +107,31 @@ final class BrightnessController {
     private var denylistBlocked: Bool = false
     private var denylistSnapshot: AppPolicySnapshot?
     private var capDetailsCache: CapDetailsCache?
+    private var pendingScreensProbeWorkItem: DispatchWorkItem?
+    private let screensProbeDebounceInterval: TimeInterval = 0.25
+    private(set) var screensChangedNotificationCount: Int = 0
+    private(set) var screensProbeExecutionCount: Int = 0
+    private(set) var lastScreensProbeAt: Date?
+    private var pendingUIStatePublishWorkItem: DispatchWorkItem?
+    private var lastPublishedUISignature: RuntimeUISignature?
+    private let uiStatePublishInterval: TimeInterval = 0.15
+    private let uiStateQuantizationPercent: Double = 0.5
+    private var pendingTilePolicyWorkItem: DispatchWorkItem?
+    private var lastAppliedTileSuspendState: Bool = false
+    private let tilePolicyDebounceInterval: TimeInterval = 0.15
+    private let tilePolicyResumeThresholdPercent: Double = 0.5
+    private var isMenuOpenForLiveUI: Bool = false
+
+    private struct RuntimeUISignature: Equatable {
+        let masterEnabled: Bool
+        let mode: RuntimeControlMode
+        let scope: Int
+        let effectivePercent: Double
+        let manualPercent: Double
+        let tileEnabled: Bool
+        let tileVisibleNow: Bool
+        let denylistBlocked: Bool
+    }
 
     private func onMainSync<T>(_ body: () -> T) -> T {
         if Thread.isMainThread { return body() }
@@ -141,7 +183,7 @@ final class BrightnessController {
             technique.adjust(factor: Float(factor))
             technique.setOverlayConfig(fullsize: overlayFullsizeEnabled(), fps: overlayFPSValue())
         }
-        applyTileRuntimePolicyOnMain()
+        applyTileRuntimePolicyOnMain(immediate: true)
 
         // Listen for screen and wake events
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged(_:)), name: NSApplication.didChangeScreenParametersNotification, object: nil)
@@ -196,6 +238,7 @@ final class BrightnessController {
             technique.disable()
         }
         applyTileRuntimePolicyOnMain()
+        notifyUIStateChangedIfNeeded(force: true)
     }
 
     // Expose current master-enabled state for collaborators
@@ -211,6 +254,7 @@ final class BrightnessController {
             if enabled {
                 technique.adjust(factor: Float(self.factor))
             }
+            scheduleUIStatePublish()
         }
     }
 
@@ -230,31 +274,63 @@ final class BrightnessController {
                 technique.adjust(factor: Float(self.factor))
             }
             applyTileRuntimePolicyOnMain()
+            scheduleUIStatePublish()
         }
     }
 
     @objc private func screensChanged(_ note: Notification) {
         invalidateCapDetailsCacheOnMain()
-        if enabled {
-            technique.screenUpdate(screens: targetDisplays())
-            // Recompute factor from user intent with new cap
-            let cap = currentGammaCap()
-            factor = BrightnessController.factor(forPercent: userPercent, cap: cap)
-            technique.adjust(factor: Float(factor))
+        screensChangedNotificationCount += 1
+        if BrightnessController.displayProbeExecutionMode(for: .screensChanged) == .debounced {
+            scheduleScreensProbeDebounced()
+        } else {
+            runScreensProbeNow()
         }
-        // Refresh display capability/probe info on topology changes
-        _ = DisplayStateProbe.shared.probe()
     }
 
     @objc private func screensDidWake(_ note: Notification) {
         invalidateCapDetailsCacheOnMain()
+        if BrightnessController.displayProbeExecutionMode(for: .wake) == .immediate {
+            runScreensProbeNow()
+        } else {
+            scheduleScreensProbeDebounced()
+        }
+    }
+
+    private func scheduleScreensProbeDebounced() {
+        cancelPendingScreensProbe()
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard self.pendingScreensProbeWorkItem != nil else { return }
+            self.pendingScreensProbeWorkItem = nil
+            self.runScreensProbeNow()
+        }
+        pendingScreensProbeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + screensProbeDebounceInterval, execute: work)
+    }
+
+    private func cancelPendingScreensProbe() {
+        pendingScreensProbeWorkItem?.cancel()
+        pendingScreensProbeWorkItem = nil
+    }
+
+    private func runScreensProbeNow() {
+        cancelPendingScreensProbe()
+        refreshDisplayStateOnMain()
+    }
+
+    private func refreshDisplayStateOnMain() {
         if enabled {
+            technique.screenUpdate(screens: targetDisplays())
             let cap = currentGammaCap()
             factor = BrightnessController.factor(forPercent: userPercent, cap: cap)
             technique.adjust(factor: Float(factor))
         }
-        // Refresh display capability after wake
         _ = DisplayStateProbe.shared.probe()
+        screensProbeExecutionCount += 1
+        lastScreensProbeAt = Date()
+        scheduleUIStatePublish()
     }
 
     // MARK: - Cap computation
@@ -392,6 +468,7 @@ final class BrightnessController {
                     if abs(effective - self.factor) > 0.0001 {
                         self.factor = effective
                         self.technique.adjust(factor: Float(self.factor))
+                        self.scheduleUIStatePublish()
                     }
                 }
                 // In paused mode, drive an occasional present to keep EDR alive without a tight loop
@@ -425,6 +502,7 @@ final class BrightnessController {
                         self.technique.setOverlayConfig(fullsize: self.overlayFullsizeEnabled(), fps: self.overlayFPSValue())
                         self.edrRecoveryPendingRevert = false
                         self.edrRecoveryTimer = nil
+                        self.scheduleUIStatePublish()
                     }
                 }
             }
@@ -465,6 +543,7 @@ final class BrightnessController {
             appPolicyRestorePending = denylistSnapshot != nil
             resetHDRExperimentalState(reason: "Blocked by denylist")
             setEnabledOnMain(false)
+            notifyUIStateChangedIfNeeded(force: true)
             return
         }
 
@@ -481,9 +560,11 @@ final class BrightnessController {
             if snapshot.masterEnabled {
                 technique.adjust(factor: Float(factor))
             }
+            notifyUIStateChangedIfNeeded(force: true)
         } else {
             denylistBlocked = false
             appPolicyRestorePending = false
+            scheduleUIStatePublish()
         }
     }
 
@@ -508,6 +589,7 @@ final class BrightnessController {
             if abs(effective - self.factor) > 0.0001 {
                 self.factor = effective
                 self.technique.adjust(factor: Float(self.factor))
+                self.scheduleUIStatePublish()
             }
         })
     }
@@ -543,23 +625,63 @@ final class BrightnessController {
         return percent <= 0.0
     }
 
-    private func applyTileRuntimePolicyOnMain() {
+    static func nextTileSuspendState(
+        masterEnabled: Bool,
+        autoEnabled: Bool,
+        percent: Double,
+        previousSuspendState: Bool,
+        resumeThresholdPercent: Double = 0.5
+    ) -> Bool {
+        guard masterEnabled, !autoEnabled else { return false }
+        if percent <= 0.0 { return true }
+        if previousSuspendState && percent < max(0.0, resumeThresholdPercent) { return true }
+        return false
+    }
+
+    private func applyTileRuntimePolicyOnMain(immediate: Bool = false) {
         let auto = Settings.alsAutoEnabled
-        let suspend = BrightnessController.shouldSuspendTileForCurrentMode(
+        let nextSuspend = BrightnessController.nextTileSuspendState(
             masterEnabled: enabled,
             autoEnabled: auto,
-            percent: userPercent
+            percent: userPercent,
+            previousSuspendState: lastAppliedTileSuspendState,
+            resumeThresholdPercent: tilePolicyResumeThresholdPercent
         )
+        scheduleTilePolicyApplyOnMain(suspend: nextSuspend, immediate: immediate)
+    }
+
+    private func scheduleTilePolicyApplyOnMain(suspend: Bool, immediate: Bool) {
+        if immediate || isMenuOpenForLiveUI {
+            pendingTilePolicyWorkItem?.cancel()
+            pendingTilePolicyWorkItem = nil
+            applyTileSuspendStateOnMain(suspend)
+            return
+        }
+        if suspend == lastAppliedTileSuspendState { return }
+
+        pendingTilePolicyWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingTilePolicyWorkItem = nil
+            self.applyTileSuspendStateOnMain(suspend)
+        }
+        pendingTilePolicyWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + tilePolicyDebounceInterval, execute: work)
+    }
+
+    private func applyTileSuspendStateOnMain(_ suspend: Bool) {
         if suspend {
             TileFeature.shared.suspendForALS()
         } else {
             TileFeature.shared.resumeAfterALS()
         }
+        lastAppliedTileSuspendState = suspend
+        scheduleUIStatePublish()
     }
 
     func reapplyTileRuntimePolicy() {
         onMainSync {
-            applyTileRuntimePolicyOnMain()
+            applyTileRuntimePolicyOnMain(immediate: true)
         }
     }
 
@@ -619,6 +741,7 @@ final class BrightnessController {
             if hdrRegionSamplerMode == 0 {
                 resetHDRExperimentalState(reason: "Off")
             }
+            scheduleUIStatePublish()
         }
     }
     func hdrAwareFadeDurationValue() -> Double { onMainSync { hdrDuckFadeDuration } }
@@ -638,6 +761,9 @@ final class BrightnessController {
             edrPolicyProfileID = id
             Settings.edrPolicyProfile = id
             invalidateCapDetailsCacheOnMain()
+            if BrightnessController.displayProbeExecutionMode(for: .profileChange) == .immediate {
+                runScreensProbeNow()
+            }
         }
     }
     func setAppPolicyScope(_ scope: Int) {
@@ -648,6 +774,7 @@ final class BrightnessController {
                 denylistBlocked = false
                 appPolicyResult = "allowed"
             }
+            scheduleUIStatePublish()
         }
     }
     func isDenylistBlocked() -> Bool { onMainSync { denylistBlocked } }
@@ -731,6 +858,10 @@ final class BrightnessController {
             guardEnabled = enabled
             Settings.guardEnabled = enabled
             invalidateCapDetailsCacheOnMain()
+            if BrightnessController.displayProbeExecutionMode(for: .guardChange) == .immediate {
+                runScreensProbeNow()
+            }
+            scheduleUIStatePublish()
         }
     }
     func setGuardFactor(_ factor: Double) {
@@ -739,7 +870,28 @@ final class BrightnessController {
             guardFactor = clamped
             Settings.guardFactor = clamped
             invalidateCapDetailsCacheOnMain()
+            if BrightnessController.displayProbeExecutionMode(for: .guardChange) == .immediate {
+                runScreensProbeNow()
+            }
+            scheduleUIStatePublish()
         }
+    }
+
+    static func displayProbeExecutionMode(for trigger: DisplayProbeTrigger) -> DisplayProbeExecutionMode {
+        switch trigger {
+        case .screensChanged:
+            return .debounced
+        case .wake, .profileChange, .guardChange:
+            return .immediate
+        }
+    }
+
+    static func shouldUseTrailingDebounce(existingPendingWork: Bool) -> Bool {
+        existingPendingWork
+    }
+
+    static func shouldRunDebouncedProbe(lastEventAt: Date, now: Date, debounceInterval: TimeInterval) -> Bool {
+        now.timeIntervalSince(lastEventAt) >= max(0.0, debounceInterval)
     }
 
     func uiStateSnapshot() -> RuntimeUIState {
@@ -749,7 +901,7 @@ final class BrightnessController {
     }
 
     private func uiStateSnapshotOnMain() -> RuntimeUIState {
-        let autoEnabled = ALSManager.shared.autoEnabled
+        let autoEnabled = Settings.alsAutoEnabled
         let mode: RuntimeControlMode = autoEnabled ? .auto : (enabled ? .manual : .off)
         let cap = currentGammaCapDetailsCachedOnMain().cap
         let effective = enabled ? BrightnessController.percent(forFactor: factor, cap: cap) : 0.0
@@ -767,6 +919,64 @@ final class BrightnessController {
             appPolicyDiagnostics: "",
             experimentalHDRDiagnostics: ""
         )
+    }
+
+    private func scheduleUIStatePublish() {
+        if isMenuOpenForLiveUI {
+            notifyUIStateChangedIfNeeded(force: true)
+            return
+        }
+        pendingUIStatePublishWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingUIStatePublishWorkItem = nil
+            self.notifyUIStateChangedIfNeeded(force: false)
+        }
+        pendingUIStatePublishWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + uiStatePublishInterval, execute: work)
+    }
+
+    private func notifyUIStateChangedIfNeeded(force: Bool) {
+        let state = uiStateSnapshotOnMain()
+        let signature = RuntimeUISignature(
+            masterEnabled: state.masterEnabled,
+            mode: state.mode,
+            scope: state.scope,
+            effectivePercent: BrightnessController.quantizedPercent(
+                state.effectivePercent,
+                step: uiStateQuantizationPercent
+            ),
+            manualPercent: BrightnessController.quantizedPercent(
+                state.manualPercent,
+                step: uiStateQuantizationPercent
+            ),
+            tileEnabled: state.tileEnabled,
+            tileVisibleNow: state.tileVisibleNow,
+            denylistBlocked: state.denylistBlocked
+        )
+        if !force, signature == lastPublishedUISignature { return }
+        lastPublishedUISignature = signature
+        NotificationCenter.default.post(name: .brightnessControllerUIStateDidChange, object: self)
+    }
+
+    static func quantizedPercent(_ value: Double, step: Double) -> Double {
+        let bounded = max(0.0, min(100.0, value))
+        let stepValue = max(0.1, step)
+        return (bounded / stepValue).rounded() * stepValue
+    }
+
+    func setMenuOpenForLiveUI(_ isOpen: Bool) {
+        onMainSync {
+            isMenuOpenForLiveUI = isOpen
+            if isOpen {
+                pendingUIStatePublishWorkItem?.cancel()
+                pendingUIStatePublishWorkItem = nil
+                pendingTilePolicyWorkItem?.cancel()
+                pendingTilePolicyWorkItem = nil
+                applyTileRuntimePolicyOnMain(immediate: true)
+                notifyUIStateChangedIfNeeded(force: true)
+            }
+        }
     }
 }
     // MARK: - HDR ducking engine

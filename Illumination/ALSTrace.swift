@@ -80,7 +80,13 @@ final class ALSTraceStore {
     private var events: [ALSTraceEvent] = []
     private let lock = NSLock()
     private(set) var capacity: Int
-    private var captureEnabled = true
+    private var captureEnabled: Bool = {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }()
 
     init(capacity: Int = 1_000) {
         self.capacity = max(1, capacity)
