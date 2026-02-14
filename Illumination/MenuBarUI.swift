@@ -74,6 +74,14 @@ struct IlluminationMenuView: View {
                         Image(systemName: "lightspectrum.horizontal")
                         LiveLuxLabel()
                     }
+                    if let issue = RuntimeDiagnostics.shared.lastIssue {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text("Issue")
+                        }
+                        .foregroundStyle(.orange)
+                        .help(issue)
+                    }
                 }
                 .font(.caption)
                 .fixedSize(horizontal: true, vertical: false) // keep icons from squeezing
@@ -114,153 +122,9 @@ struct IlluminationMenuView: View {
 
             // Footer with Advanced Options dropdown and Quit on the right
             HStack {
-                Menu("Advanced Options") {
-                    // Brightness & Safety
-                    Group {
-                        Text("Brightness & Safety").font(.caption).foregroundStyle(.secondary)
-                        Toggle("Guard Mode", isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
-                        Menu("Guard Factor: \(Int(round(vm.guardFactor * 100)))%") {
-                            ForEach([0.75, 0.85, 0.90, 0.95], id: \.self) { f in
-                                Button(action: { vm.setGuardFactor(f) }) {
-                                    HStack {
-                                        Text(String(format: "%.0f%%", f * 100.0))
-                                        if abs(vm.guardFactor - f) < 0.0001 { Image(systemName: "checkmark") }
-                                    }
-                                }
-                            }
-                        }
-                        Button("EDR Nudge") { vm.edrNudge() }
-                    }
-                    .disabled(!(vm.enabled || vm.alsAutoEnabled))
-
-                    Divider()
-
-                    // ALS Automatic
-                    Group {
-                        Text("ALS Automatic").font(.caption).foregroundStyle(.secondary)
-                        Menu("Sensitivity: \(vm.alsProfileName)") {
-                            Button(action: { vm.setALSProfileTwilight() }) { HStack { Text("Twilight"); if ALSManager.shared.getProfile() == .twilight { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setALSProfileDaybreak() }) { HStack { Text("Daybreak"); if ALSManager.shared.getProfile() == .daybreak { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setALSProfileMidday() }) { HStack { Text("Midday"); if ALSManager.shared.getProfile() == .midday { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setALSProfileSunburst() }) { HStack { Text("Sunburst"); if ALSManager.shared.getProfile() == .sunburst { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setALSProfileHighNoon() }) { HStack { Text("High Noon"); if ALSManager.shared.getProfile() == .highNoon { Image(systemName: "checkmark") } } }
-                        }
-                    }
-                    .disabled(!vm.alsAvailable)
-
-                    Divider()
-
-                    // Debug (hidden unlock via title 'o')
-                    if vm.debugUnlocked {
-                        Menu("Debug") {
-                            Menu("Live Diagnostics") { ForEach(vm.debugDetails, id: \.self) { line in Text(line) }; Divider(); Button("Copy Diagnostics") { vm.copyDiagnosticsToPasteboard() } }
-                            Divider()
-                        Menu("Display Probe") { ForEach(DisplayStateProbe.shared.debugLines(), id: \.self) { line in Text(line) }; Divider(); Button("Re-probe Displays") { vm.reprobeDisplays() } }
-                        Divider()
-                        // Lux Label Steps
-                        Menu("Lux Steps") {
-                            Button(action: { vm.setLuxStepMode(0) }) { HStack { Text("1 lx"); if vm.luxStepMode == 0 { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setLuxStepMode(1) }) { HStack { Text("0.1 k lx"); if vm.luxStepMode == 1 { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setLuxStepMode(2) }) { HStack { Text("0.5 k lx"); if vm.luxStepMode == 2 { Image(systemName: "checkmark") } } }
-                            Button(action: { vm.setLuxStepMode(3) }) { HStack { Text("1 k lx"); if vm.luxStepMode == 3 { Image(systemName: "checkmark") } } }
-                        }
-                        Divider()
-                        // Removed: Lux Algorithm and Sun Lux Max presets
-                        // Overlay settings (moved from Advanced)
-                        Menu("Overlay") {
-                            Menu("FPS: \(vm.overlayFPS)") {
-                                ForEach([5, 10, 15, 30, 60, 120], id: \.self) { f in
-                                    Button(action: { vm.setOverlayFPS(f) }) { HStack { Text("\(f)"); if vm.overlayFPS == f { Image(systemName: "checkmark") } } }
-                                }
-                            }
-                            Button("EDR Nudge") { vm.edrNudge() }
-                        }
-                        Divider()
-                        // HDR settings (moved from Advanced)
-                        Menu("HDR Settings") {
-                            Menu("Detection: \(modeName(vm.hdrMode))") {
-                                ForEach([(0,"Off"),(3,"Apps")], id: \.0) { m in
-                                    Button(action: { vm.setHDRMode(m.0) }) { HStack { Text(m.1); if vm.hdrMode == m.0 { Image(systemName: "checkmark") } } }
-                                }
-                            }
-                            Menu("Duck Target: \(vm.hdrDuckPercent)%") {
-                                ForEach([30, 40, 50], id: \.self) { p in
-                                    Button(action: { vm.setHDRDuckPercent(p) }) { HStack { Text("\(p)%"); if vm.hdrDuckPercent == p { Image(systemName: "checkmark") } } }
-                                }
-                            }
-                            Menu(String(format: "Threshold: %.2f", vm.hdrThreshold)) {
-                                ForEach([1.4, 1.5, 1.8, 2.0], id: \.self) { t in
-                                    Button(action: { vm.setHDRThreshold(t) }) { HStack { Text(String(format: "%.2f", t)); if abs(vm.hdrThreshold - t) < 0.0001 { Image(systemName: "checkmark") } } }
-                                }
-                            }
-                            Menu("Fade: \(vm.hdrFadeMs) ms") {
-                                ForEach([200, 300, 500], id: \.self) { ms in
-                                    Button(action: { vm.setHDRFadeMs(ms) }) { HStack { Text("\(ms) ms"); if vm.hdrFadeMs == ms { Image(systemName: "checkmark") } } }
-                                }
-                            }
-                        }
-                        Divider()
-                        // HDR Tile (moved from Advanced)
-                        Menu("HDR Tile") {
-                            Toggle("Enable", isOn: Binding(get: { vm.tileEnabled }, set: { vm.setTileEnabled($0) }))
-                                .disabled(!vm.tileAvailable)
-                            if !vm.tileAvailable { Text("Asset not found").font(.caption).foregroundStyle(.secondary) }
-                            Menu("Size: \(vm.tileSize) px") {
-                                ForEach([64, 32, 16, 8, 4, 1], id: \.self) { s in
-                                    Button(action: { vm.setTileSize(s) }) { HStack { Text("\(s) px"); if vm.tileSize == s { Image(systemName: "checkmark") } } }
-                                }
-                            }
-                            Menu("Opacity: \(vm.tileFullOpacity ? "Full" : "Low")") {
-                                Button(action: { vm.setTileFullOpacity(false) }) { HStack { Text("Low"); if !vm.tileFullOpacity { Image(systemName: "checkmark") } } }
-                                Button(action: { vm.setTileFullOpacity(true) }) { HStack { Text("Full"); if vm.tileFullOpacity { Image(systemName: "checkmark") } } }
-                            }
-                        }
-                            Divider()
-                            Menu("ALS Tuning") {
-                                Menu("Entry Min: \(vm.entryMinPercent)%") {
-                                    ForEach([1,2,5,10], id: \.self) { p in
-                                        Button(action: { vm.setEntryMinPercent(p) }) {
-                                            HStack { Text("\(p)%"); if vm.entryMinPercent == p { Image(systemName: "checkmark") } }
-                                        }
-                                    }
-                                }
-                                Menu(String(format: "Entry Envelope: %.1fs", vm.entryEnvelopeSeconds)) {
-                                    ForEach([0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
-                                        Button(action: { vm.setEntryEnvelopeSeconds(s) }) {
-                                            HStack { Text(String(format: "%.1fs", s)); if abs(vm.entryEnvelopeSeconds - s) < 0.0001 { Image(systemName: "checkmark") } }
-                                        }
-                                    }
-                                }
-                                Menu("Max Slope: \(vm.maxPercentPerSecond)%/s") {
-                                    ForEach([20, 40, 50, 80, 100], id: \.self) { v in
-                                        Button(action: { vm.setMaxPercentPerSecond(v) }) {
-                                            HStack { Text("\(v)%/s"); if vm.maxPercentPerSecond == v { Image(systemName: "checkmark") } }
-                                        }
-                                    }
-                                }
-                                Menu(String(format: "Min On: %.1fs", vm.minOnSeconds)) {
-                                    ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
-                                        Button(action: { vm.setMinOnSeconds(s) }) {
-                                            HStack { Text(String(format: "%.1fs", s)); if abs(vm.minOnSeconds - s) < 0.0001 { Image(systemName: "checkmark") } }
-                                        }
-                                    }
-                                }
-                                Menu(String(format: "Min Off: %.1fs", vm.minOffSeconds)) {
-                                    ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
-                                        Button(action: { vm.setMinOffSeconds(s) }) {
-                                            HStack { Text(String(format: "%.1fs", s)); if abs(vm.minOffSeconds - s) < 0.0001 { Image(systemName: "checkmark") } }
-                                        }
-                                    }
-                                }
-                            }
-                            Divider()
-                            // Calibration editor can't live in a submenu (TextField not interactive there).
-                            // Provide an entry point that opens an inline editor in the main popover.
-                            Button("Open Calibrator Editor…") { vm.calibRefreshFields(); calibState.show = true }
-                            Divider()
-                            Menu("Experimental") { Button("HDR Detection: Auto") { vm.setHDRMode(2) } }
-                        }
-                    }
+                AdvancedOptionsMenu(vm: vm, debugUnlocked: vm.debugUnlocked) {
+                    vm.calibRefreshFields()
+                    calibState.show = true
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -309,6 +173,169 @@ struct IlluminationMenuView: View {
     }
 
     // luxDisplay removed; using LiveLuxLabel instead
+}
+
+private struct AdvancedOptionsMenu: View {
+    @ObservedObject var vm: IlluminationViewModel
+    let debugUnlocked: Bool
+    var onOpenCalibrator: () -> Void
+
+    var body: some View {
+        Menu("Advanced Options") {
+            Group {
+                Text("Brightness & Safety").font(.caption).foregroundStyle(.secondary)
+                Toggle("Guard Mode", isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
+                Menu("Guard Factor: \(Int(round(vm.guardFactor * 100)))%") {
+                    ForEach([0.75, 0.85, 0.90, 0.95], id: \.self) { f in
+                        Button(action: { vm.setGuardFactor(f) }) {
+                            HStack {
+                                Text(String(format: "%.0f%%", f * 100.0))
+                                if abs(vm.guardFactor - f) < 0.0001 { Image(systemName: "checkmark") }
+                            }
+                        }
+                    }
+                }
+                Button("EDR Nudge") { vm.edrNudge() }
+            }
+            .disabled(!(vm.enabled || vm.alsAutoEnabled))
+
+            Divider()
+
+            Group {
+                Text("ALS Automatic").font(.caption).foregroundStyle(.secondary)
+                Menu("Sensitivity: \(vm.alsProfileName)") {
+                    Button(action: { vm.setALSProfileTwilight() }) { HStack { Text("Twilight"); if ALSManager.shared.getProfile() == .twilight { Image(systemName: "checkmark") } } }
+                    Button(action: { vm.setALSProfileDaybreak() }) { HStack { Text("Daybreak"); if ALSManager.shared.getProfile() == .daybreak { Image(systemName: "checkmark") } } }
+                    Button(action: { vm.setALSProfileMidday() }) { HStack { Text("Midday"); if ALSManager.shared.getProfile() == .midday { Image(systemName: "checkmark") } } }
+                    Button(action: { vm.setALSProfileSunburst() }) { HStack { Text("Sunburst"); if ALSManager.shared.getProfile() == .sunburst { Image(systemName: "checkmark") } } }
+                    Button(action: { vm.setALSProfileHighNoon() }) { HStack { Text("High Noon"); if ALSManager.shared.getProfile() == .highNoon { Image(systemName: "checkmark") } } }
+                }
+            }
+            .disabled(!vm.alsAvailable)
+
+            if debugUnlocked {
+                Divider()
+                DebugMenu(vm: vm, onOpenCalibrator: onOpenCalibrator)
+            }
+        }
+    }
+}
+
+private struct DebugMenu: View {
+    @ObservedObject var vm: IlluminationViewModel
+    var onOpenCalibrator: () -> Void
+
+    var body: some View {
+        Menu("Debug") {
+            Menu("Live Diagnostics") {
+                ForEach(vm.debugDetails, id: \.self) { line in Text(line) }
+                Divider()
+                Button("Copy Diagnostics") { vm.copyDiagnosticsToPasteboard() }
+            }
+            Divider()
+            Menu("Display Probe") {
+                ForEach(DisplayStateProbe.shared.debugLines(), id: \.self) { line in Text(line) }
+                Divider()
+                Button("Re-probe Displays") { vm.reprobeDisplays() }
+            }
+            Divider()
+            Menu("Lux Steps") {
+                Button(action: { vm.setLuxStepMode(0) }) { HStack { Text("1 lx"); if vm.luxStepMode == 0 { Image(systemName: "checkmark") } } }
+                Button(action: { vm.setLuxStepMode(1) }) { HStack { Text("0.1 k lx"); if vm.luxStepMode == 1 { Image(systemName: "checkmark") } } }
+                Button(action: { vm.setLuxStepMode(2) }) { HStack { Text("0.5 k lx"); if vm.luxStepMode == 2 { Image(systemName: "checkmark") } } }
+                Button(action: { vm.setLuxStepMode(3) }) { HStack { Text("1 k lx"); if vm.luxStepMode == 3 { Image(systemName: "checkmark") } } }
+            }
+            Divider()
+            Menu("Overlay") {
+                Menu("FPS: \(vm.overlayFPS)") {
+                    ForEach([5, 10, 15, 30, 60, 120], id: \.self) { f in
+                        Button(action: { vm.setOverlayFPS(f) }) { HStack { Text("\(f)"); if vm.overlayFPS == f { Image(systemName: "checkmark") } } }
+                    }
+                }
+                Button("EDR Nudge") { vm.edrNudge() }
+            }
+            Divider()
+            Menu("HDR Settings") {
+                Menu("Detection: \(BrightnessController.modeName(vm.hdrMode))") {
+                    ForEach([(0, "Off"), (3, "Apps")], id: \.0) { m in
+                        Button(action: { vm.setHDRMode(m.0) }) { HStack { Text(m.1); if vm.hdrMode == m.0 { Image(systemName: "checkmark") } } }
+                    }
+                }
+                Menu("Duck Target: \(vm.hdrDuckPercent)%") {
+                    ForEach([30, 40, 50], id: \.self) { p in
+                        Button(action: { vm.setHDRDuckPercent(p) }) { HStack { Text("\(p)%"); if vm.hdrDuckPercent == p { Image(systemName: "checkmark") } } }
+                    }
+                }
+                Menu(String(format: "Threshold: %.2f", vm.hdrThreshold)) {
+                    ForEach([1.4, 1.5, 1.8, 2.0], id: \.self) { t in
+                        Button(action: { vm.setHDRThreshold(t) }) { HStack { Text(String(format: "%.2f", t)); if abs(vm.hdrThreshold - t) < 0.0001 { Image(systemName: "checkmark") } } }
+                    }
+                }
+                Menu("Fade: \(vm.hdrFadeMs) ms") {
+                    ForEach([200, 300, 500], id: \.self) { ms in
+                        Button(action: { vm.setHDRFadeMs(ms) }) { HStack { Text("\(ms) ms"); if vm.hdrFadeMs == ms { Image(systemName: "checkmark") } } }
+                    }
+                }
+            }
+            Divider()
+            Menu("HDR Tile") {
+                Toggle("Enable", isOn: Binding(get: { vm.tileEnabled }, set: { vm.setTileEnabled($0) }))
+                    .disabled(!vm.tileAvailable)
+                if !vm.tileAvailable { Text("Asset not found").font(.caption).foregroundStyle(.secondary) }
+                Menu("Size: \(vm.tileSize) px") {
+                    ForEach([64, 32, 16, 8, 4, 1], id: \.self) { s in
+                        Button(action: { vm.setTileSize(s) }) { HStack { Text("\(s) px"); if vm.tileSize == s { Image(systemName: "checkmark") } } }
+                    }
+                }
+                Menu("Opacity: \(vm.tileFullOpacity ? "Full" : "Low")") {
+                    Button(action: { vm.setTileFullOpacity(false) }) { HStack { Text("Low"); if !vm.tileFullOpacity { Image(systemName: "checkmark") } } }
+                    Button(action: { vm.setTileFullOpacity(true) }) { HStack { Text("Full"); if vm.tileFullOpacity { Image(systemName: "checkmark") } } }
+                }
+            }
+            Divider()
+            Menu("ALS Tuning") {
+                Menu("Entry Min: \(vm.entryMinPercent)%") {
+                    ForEach([1, 2, 5, 10], id: \.self) { p in
+                        Button(action: { vm.setEntryMinPercent(p) }) {
+                            HStack { Text("\(p)%"); if vm.entryMinPercent == p { Image(systemName: "checkmark") } }
+                        }
+                    }
+                }
+                Menu(String(format: "Entry Envelope: %.1fs", vm.entryEnvelopeSeconds)) {
+                    ForEach([0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
+                        Button(action: { vm.setEntryEnvelopeSeconds(s) }) {
+                            HStack { Text(String(format: "%.1fs", s)); if abs(vm.entryEnvelopeSeconds - s) < 0.0001 { Image(systemName: "checkmark") } }
+                        }
+                    }
+                }
+                Menu("Max Slope: \(vm.maxPercentPerSecond)%/s") {
+                    ForEach([20, 40, 50, 80, 100], id: \.self) { v in
+                        Button(action: { vm.setMaxPercentPerSecond(v) }) {
+                            HStack { Text("\(v)%/s"); if vm.maxPercentPerSecond == v { Image(systemName: "checkmark") } }
+                        }
+                    }
+                }
+                Menu(String(format: "Min On: %.1fs", vm.minOnSeconds)) {
+                    ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
+                        Button(action: { vm.setMinOnSeconds(s) }) {
+                            HStack { Text(String(format: "%.1fs", s)); if abs(vm.minOnSeconds - s) < 0.0001 { Image(systemName: "checkmark") } }
+                        }
+                    }
+                }
+                Menu(String(format: "Min Off: %.1fs", vm.minOffSeconds)) {
+                    ForEach([0.0, 1.0, 1.5, 2.0, 3.0], id: \.self) { s in
+                        Button(action: { vm.setMinOffSeconds(s) }) {
+                            HStack { Text(String(format: "%.1fs", s)); if abs(vm.minOffSeconds - s) < 0.0001 { Image(systemName: "checkmark") } }
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button("Open Calibrator Editor…") { onOpenCalibrator() }
+            Divider()
+            Menu("Experimental") { Button("HDR Detection: Auto") { vm.setHDRMode(2) } }
+        }
+    }
 }
 
 // MARK: - Inline Calibrator Editor
