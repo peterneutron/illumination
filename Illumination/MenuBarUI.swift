@@ -69,7 +69,7 @@ struct IlluminationMenuView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     HStack(spacing: 4) {
                         Image(systemName: "rectangle.fill")
-                        Text(tileModeDisplay(vm: vm))
+                        LiveTileModeLabel()
                     }
                     HStack(spacing: 4) {
                         Image(systemName: "app.connected.to.app.below.fill")
@@ -171,11 +171,6 @@ struct IlluminationMenuView: View {
                     .padding(.top, 6)
             }
         }
-    }
-
-    private func tileModeDisplay(vm: IlluminationViewModel) -> String {
-        guard (vm.enabled || vm.alsAutoEnabled), vm.runtimeTileEnabled, vm.tileVisibleNow else { return String(localized: "Off") }
-        return vm.tileFullOpacity ? String(localized: "Full") : String(localized: "Low")
     }
 
     private func scopeDisplay(vm: IlluminationViewModel) -> String {
@@ -332,6 +327,43 @@ private struct QuickActionsBar: View {
 }
 
 // MARK: - Live Labels (avoid SwiftUI body updates while menu is open)
+private struct LiveTileModeLabel: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSTextField {
+        let tf = NSTextField(labelWithString: String(localized: "Off"))
+        let base = NSFont.preferredFont(forTextStyle: .caption1)
+        tf.font = NSFont.monospacedDigitSystemFont(ofSize: base.pointSize, weight: .regular)
+        context.coordinator.start(label: tf)
+        return tf
+    }
+    func updateNSView(_ nsView: NSTextField, context: Context) { }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    final class Coordinator {
+        var timer: Timer?
+        func start(label: NSTextField) {
+            timer?.invalidate(); timer = nil
+            timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { _ in
+                let bc = BrightnessController.shared
+                let state = bc.uiStateSnapshot()
+                let active = state.masterEnabled || state.mode == .auto
+                let tileEnabled = TileFeature.shared.enabled
+                let tileVisible = TileFeature.shared.isCurrentlyVisible
+                let fullOpacity = TileFeature.shared.fullOpacity
+                let text: String
+                if active && tileEnabled && tileVisible {
+                    text = fullOpacity ? String(localized: "Full") : String(localized: "Low")
+                } else {
+                    text = String(localized: "Off")
+                }
+                if label.stringValue != text {
+                    label.stringValue = text
+                }
+            }
+            if let t = timer { RunLoop.main.add(t, forMode: .common) }
+        }
+        deinit { timer?.invalidate() }
+    }
+}
+
 private struct LiveLuxLabel: NSViewRepresentable {
     func makeNSView(context: Context) -> NSTextField {
         let tf = NSTextField(labelWithString: "— lx")
