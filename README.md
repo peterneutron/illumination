@@ -38,28 +38,24 @@ This project uses a `Makefile` to automate the build process.
 #### 1. Prerequisites
 
 - macOS with Xcode (26+ recommended) installed.
+- XcodeGen (`xcodegen`) installed and available in `PATH`.
 - Clone the repository:
   ```bash
   git clone https://github.com/peterneutron/illumination.git
   ```
 
-#### 2. One-Time Setup in Xcode
+#### 2. Generate and Verify the Xcode Project
 
-Before you can build from the command line, you need to configure code signing once in Xcode.
-
-1.  Open `Illumination.xcodeproj` in Xcode.
-2.  In the project navigator, select the "Illumination" project, then the "Illumination" target.
-3.  Go to the **"Signing & Capabilities"** tab.
-4.  From the **"Team"** dropdown, select your personal Apple ID. Xcode will automatically create a local development certificate for you.
-5.  You can now close Xcode.
+- `make xcodegen` – generates `Illumination.xcodeproj` from `project.yml`.
+- `make xcodegen-check` – verifies `Illumination.xcodeproj` is in sync with `project.yml`.
 
 #### 3. Pick a Build Lane
 
 The Makefile now exposes explicit lanes for unsigned, development-signed, and distribution builds. All artifacts land in `./build`.
 
 - `make build` – unsigned local build (default). Running `make` with no target is equivalent.
-- `make devsigned` – development-signed build using automatic signing. Provide a certificate explicitly with `SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" make devsigned`, or leave it unset to launch `scripts/select_signing_identity.sh`, which will discover certificates via the `security` tool and prompt you to choose.
-- `make archive` – manual-signing archive intended for maintainers. Accepts the same `SIGNING_IDENTITY` variable and falls back to the helper script if needed.
+- `make devsigned` – development-signed build using automatic signing. Deterministic overrides are supported with `SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" DEVELOPMENT_TEAM="TEAMID" make devsigned`. If not provided, `scripts/resolve-signing.sh` auto-detects a suitable identity (and falls back to `scripts/select_signing_identity.sh` when interactive selection is needed).
+- `make archive` – manual-signing archive intended for maintainers. Runs signing resolution in non-interactive mode and fails fast if signing variables are not resolvable.
 - `make export` – exports an `.app` from the latest archive using `ExportOptions.plist`.
 - `make package` – zips the exported app into `build/Illumination.zip`.
 - `make clean` – removes `./build`.

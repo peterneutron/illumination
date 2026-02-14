@@ -1,0 +1,88 @@
+name: Illumination
+
+options:
+  createIntermediateGroups: true
+  groupSortPosition: top
+  developmentLanguage: en
+
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: 26.0
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    SWIFT_VERSION: 5.0
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(inherited)"
+      SWIFT_OPTIMIZATION_LEVEL: -Onone
+    Release:
+      SWIFT_COMPILATION_MODE: wholemodule
+
+targets:
+  Illumination:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Illumination
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.neutronstar.Illumination
+        PRODUCT_NAME: "$(TARGET_NAME)"
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Illumination
+        INFOPLIST_KEY_LSUIElement: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        DEAD_CODE_STRIPPING: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: NO
+
+  IlluminationTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: IlluminationTests
+    dependencies:
+      - target: Illumination
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.neutronstar.IlluminationTests
+        PRODUCT_NAME: "$(TARGET_NAME)"
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Illumination.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Illumination"
+
+  IlluminationUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: IlluminationUITests
+    dependencies:
+      - target: Illumination
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.neutronstar.IlluminationUITests
+        PRODUCT_NAME: "$(TARGET_NAME)"
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Illumination
+
+schemes:
+  Illumination:
+    shared: true
+    build:
+      targets:
+        Illumination: all
+    test:
+      targets:
+        - name: IlluminationTests

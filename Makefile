@@ -1,27 +1,42 @@
 SHELL := /bin/bash
 
 # Project layout
-APP_NAME        ?= Illumination
-PROJECT         ?= ./Illumination.xcodeproj
-SCHEME          ?= $(APP_NAME)
-CONFIGURATION   ?= Release
-BUILD_DIR       ?= ./build
-DERIVED_DATA    := $(BUILD_DIR)/DerivedData
-ARCHIVE         := $(BUILD_DIR)/$(SCHEME).xcarchive
-EXPORT_OPTIONS  ?= ./ExportOptions.plist
-APP_BUNDLE      := $(BUILD_DIR)/$(APP_NAME).app
+APP_NAME         ?= Illumination
+PROJECT_DIR      ?= .
+PROJECT          ?= $(PROJECT_DIR)/$(APP_NAME).xcodeproj
+XCODEGEN_PROJECT ?= $(PROJECT_DIR)
+XCODEGEN_SPEC    ?= ./project.yml
+SCHEME           ?= $(APP_NAME)
+CONFIGURATION    ?= Release
+BUILD_DIR        ?= ./build
+BUILD_DIR_STAMP  := $(BUILD_DIR)/.dir-stamp
+DERIVED_DATA     := $(BUILD_DIR)/DerivedData
+ARCHIVE          := $(BUILD_DIR)/$(SCHEME).xcarchive
+EXPORT_OPTIONS   ?= ./ExportOptions.plist
+APP_BUNDLE       := $(BUILD_DIR)/$(APP_NAME).app
 
-SIGNING_IDENTITY_SCRIPT := ./scripts/select_signing_identity.sh
+# Scripts
+SIGNING_RESOLVER_SCRIPT := ./scripts/resolve-signing.sh
 
-.PHONY: all build devsigned archive export package clean
+.PHONY: all release xcodegen xcodegen-check build devsigned archive export package clean
 
 all: build
+release: build
 
-$(BUILD_DIR):
+$(BUILD_DIR_STAMP):
 	@mkdir -p $(BUILD_DIR)
+	@touch $(BUILD_DIR_STAMP)
+
+xcodegen:
+	@echo "--> Generating Xcode project from $(XCODEGEN_SPEC)"
+	@xcodegen generate --spec "$(XCODEGEN_SPEC)" --project "$(XCODEGEN_PROJECT)"
+	@echo "✅ Xcode project generated at $(PROJECT)"
+
+xcodegen-check:
+	@bash ./scripts/xcodegen-check.sh
 
 # -------- Lane A: unsigned local build (default) --------
-build: $(BUILD_DIR)
+build: xcodegen $(BUILD_DIR_STAMP)
 	@echo "--> Building unsigned $(APP_NAME) (scheme=$(SCHEME), configuration=$(CONFIGURATION))"
 	xcodebuild \
 	  -project "$(PROJECT)" \
@@ -36,21 +51,11 @@ build: $(BUILD_DIR)
 	@echo "✅ Unsigned app available at $(APP_BUNDLE)"
 
 # -------- Lane B: automatically signed developer build --------
-devsigned: $(BUILD_DIR)
+devsigned: xcodegen $(BUILD_DIR_STAMP)
 	@echo "--> Building with Automatic signing"
-	@identity="$$SIGNING_IDENTITY"; \
-	if [[ -z "$$identity" ]]; then \
-	  if [[ ! -x "$(SIGNING_IDENTITY_SCRIPT)" ]]; then \
-	    echo "error: missing signing identity script at $(SIGNING_IDENTITY_SCRIPT)" >&2; \
-	    exit 1; \
-	  fi; \
-	  identity="$$($(SIGNING_IDENTITY_SCRIPT))"; \
-	fi; \
-	team_id="$$(printf '%s\n' "$$identity" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')"; \
-	if [[ -z "$$team_id" ]]; then \
-	  echo "error: could not derive DEVELOPMENT_TEAM from signing identity '$$identity'" >&2; \
-	  exit 1; \
-	fi; \
+	@eval "$$($(SIGNING_RESOLVER_SCRIPT))"; \
+	identity="$$SIGNING_IDENTITY"; \
+	team_id="$$DEVELOPMENT_TEAM"; \
 	echo "--> Using team $$team_id"; \
 	xcodebuild \
 	  -project "$(PROJECT)" \
@@ -68,21 +73,11 @@ devsigned: $(BUILD_DIR)
 	@echo "✅ Dev-signed app available at $(APP_BUNDLE)"
 
 # -------- Lane C: distribution archive (maintainers) --------
-archive: $(BUILD_DIR)
+archive: xcodegen $(BUILD_DIR_STAMP)
 	@echo "--> Archiving $(APP_NAME) for distribution"
-	@identity="$$SIGNING_IDENTITY"; \
-	if [[ -z "$$identity" ]]; then \
-	  if [[ ! -x "$(SIGNING_IDENTITY_SCRIPT)" ]]; then \
-	    echo "error: missing signing identity script at $(SIGNING_IDENTITY_SCRIPT)" >&2; \
-	    exit 1; \
-	  fi; \
-	  identity="$$($(SIGNING_IDENTITY_SCRIPT))"; \
-	fi; \
-	team_id="$$(printf '%s\n' "$$identity" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')"; \
-	if [[ -z "$$team_id" ]]; then \
-	  echo "error: could not derive DEVELOPMENT_TEAM from signing identity '$$identity'" >&2; \
-	  exit 1; \
-	fi; \
+	@eval "$$(REQUIRE_NONINTERACTIVE=1 ALLOW_INTERACTIVE=0 $(SIGNING_RESOLVER_SCRIPT))"; \
+	identity="$$SIGNING_IDENTITY"; \
+	team_id="$$DEVELOPMENT_TEAM"; \
 	xcodebuild \
 	  -project "$(PROJECT)" \
 	  -scheme "$(SCHEME)" \
