@@ -7,11 +7,32 @@ struct AdvancedOptionsMenu: View {
     var onOpenAppPicker: () -> Void
 
     var body: some View {
-        Menu(L("Advanced Options")) {
+        Menu("Advanced Options") {
             Group {
-                Text(L("Brightness & Safety")).font(.caption).foregroundStyle(.secondary)
-                Toggle(L("Guard Mode"), isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
-                Menu(LF("Guard Factor: %d%%", Int(round(vm.guardFactor * 100)))) {
+                Text("General").font(.caption).foregroundStyle(.secondary)
+                Toggle(
+                    "Run at Login",
+                    isOn: Binding(
+                        get: { vm.runAtLoginEnabled },
+                        set: { vm.setRunAtLogin($0) }
+                    )
+                )
+                Text(vm.runAtLoginStatusLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if !vm.launchAtLoginError.isEmpty {
+                    Text(vm.launchAtLoginError)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Divider()
+
+            Group {
+                Text("Brightness & Safety").font(.caption).foregroundStyle(.secondary)
+                Toggle("Guard Mode", isOn: Binding(get: { vm.guardEnabled }, set: { vm.setGuardEnabled($0) }))
+                Menu(String(format: String(localized: "Guard Factor: %d%%"), Int(round(vm.guardFactor * 100)))) {
                     ForEach([0.75, 0.85, 0.90, 0.95], id: \.self) { factor in
                         Button(action: { vm.setGuardFactor(factor) }) {
                             HStack {
@@ -23,42 +44,42 @@ struct AdvancedOptionsMenu: View {
                         }
                     }
                 }
-                Button(L("EDR Nudge")) { vm.edrNudge() }
+                Button("EDR Nudge") { vm.edrNudge() }
             }
             .disabled(!(vm.enabled || vm.alsAutoEnabled))
 
             Divider()
 
             Group {
-                Text(L("ALS Automatic")).font(.caption).foregroundStyle(.secondary)
-                Menu(LF("Sensitivity: %@", vm.alsProfileName)) {
+                Text("ALS Automatic").font(.caption).foregroundStyle(.secondary)
+                Menu(String(format: String(localized: "Sensitivity: %@"), vm.alsProfileName)) {
                     Button(action: { vm.setALSProfileTwilight() }) {
                         HStack {
-                            Text(L("Twilight"))
+                            Text("Twilight")
                             if ALSManager.shared.getProfile() == .twilight { Image(systemName: "checkmark") }
                         }
                     }
                     Button(action: { vm.setALSProfileDaybreak() }) {
                         HStack {
-                            Text(L("Daybreak"))
+                            Text("Daybreak")
                             if ALSManager.shared.getProfile() == .daybreak { Image(systemName: "checkmark") }
                         }
                     }
                     Button(action: { vm.setALSProfileMidday() }) {
                         HStack {
-                            Text(L("Midday"))
+                            Text("Midday")
                             if ALSManager.shared.getProfile() == .midday { Image(systemName: "checkmark") }
                         }
                     }
                     Button(action: { vm.setALSProfileSunburst() }) {
                         HStack {
-                            Text(L("Sunburst"))
+                            Text("Sunburst")
                             if ALSManager.shared.getProfile() == .sunburst { Image(systemName: "checkmark") }
                         }
                     }
                     Button(action: { vm.setALSProfileHighNoon() }) {
                         HStack {
-                            Text(L("High Noon"))
+                            Text("High Noon")
                             if ALSManager.shared.getProfile() == .highNoon { Image(systemName: "checkmark") }
                         }
                     }
@@ -191,7 +212,11 @@ struct DebugMenu: View {
                     }
                     Button("EDR Nudge") { vm.edrNudge() }
                 }
-                Menu("HDR Settings") {
+                Menu("Experimental HDR Detection") {
+                    Toggle("Enable Experimental HDR Ducking", isOn: Binding(get: { vm.hdrExperimentalEnabled }, set: { vm.setHDRExperimentalEnabled($0) }))
+                    Text("Heuristic only. Non-authoritative and may require Screen Recording permission.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Menu("Detection: \(BrightnessController.modeName(vm.hdrMode))") {
                         ForEach([(0, "Off"), (2, "Auto"), (3, "Apps")], id: \.0) { mode in
                             Button(action: { vm.setHDRMode(mode.0) }) {

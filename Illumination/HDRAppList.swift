@@ -20,10 +20,7 @@ enum HDRAppList {
     private static let defaultEntries: [HDRAppEntry] = [
         HDRAppEntry(bundleID: "com.apple.Photos", displayName: "Photos", isDefault: true, isEnabled: true),
         HDRAppEntry(bundleID: "com.apple.QuickTimePlayerX", displayName: "QuickTime Player", isDefault: true, isEnabled: true),
-        HDRAppEntry(bundleID: "com.apple.TV", displayName: "TV", isDefault: true, isEnabled: true),
-        HDRAppEntry(bundleID: "com.apple.Safari", displayName: "Safari", isDefault: true, isEnabled: true),
-        HDRAppEntry(bundleID: "com.google.Chrome", displayName: "Google Chrome", isDefault: true, isEnabled: true),
-        HDRAppEntry(bundleID: "org.mozilla.firefox", displayName: "Firefox", isDefault: true, isEnabled: true)
+        HDRAppEntry(bundleID: "com.apple.TV", displayName: "TV", isDefault: true, isEnabled: true)
     ]
 
     static func frontmostAppInfo() -> (bundleID: String?, displayName: String?) {

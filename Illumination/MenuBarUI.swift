@@ -58,7 +58,7 @@ struct IlluminationMenuView: View {
                         .truncationMode(.tail)
                     if vm.alsAutoEnabled {
                         Image(systemName: vm.alsProfileSymbolName)
-                            .help(LF("Automatic (%@)", ALSManager.shared.getProfile().displayName))
+                            .help(String(format: String(localized: "Automatic (%@)"), ALSManager.shared.getProfile().displayName))
                     }
                 }
                 .font(.caption)
@@ -82,7 +82,7 @@ struct IlluminationMenuView: View {
                     if let issue = RuntimeDiagnostics.shared.lastIssue {
                         HStack(spacing: 4) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                            Text(L("Issue"))
+                            Text("Issue")
                         }
                         .foregroundStyle(.orange)
                         .help(issue)
@@ -96,7 +96,7 @@ struct IlluminationMenuView: View {
 
             VStack(alignment: .leading) {
                 HStack {
-                    Text(L("Brightness"))
+                    Text("Brightness")
                     Spacer()
                     LivePercentLabel()
                         .frame(minWidth: 32, alignment: .trailing)
@@ -136,7 +136,7 @@ struct IlluminationMenuView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Button(L("Quit")) {
+                Button("Quit") {
                     NSApplication.shared.terminate(nil)
                 }
                 .keyboardShortcut("q", modifiers: .command)
@@ -166,9 +166,9 @@ struct IlluminationMenuView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Display Not Supported")
                     .font(.title2).bold()
-                Text(L("This Mac/display does not report Extended Dynamic Range (EDR). Illumination targets XDR-capable displays only."))
+                Text("This Mac/display does not report Extended Dynamic Range (EDR). Illumination targets XDR-capable displays only.")
                     .font(.callout)
-                Button(L("Quit App")) { NSApplication.shared.terminate(nil) }
+                Button("Quit App") { NSApplication.shared.terminate(nil) }
                     .buttonStyle(.borderedProminent)
                     .padding(.top, 6)
             }
@@ -176,12 +176,12 @@ struct IlluminationMenuView: View {
     }
 
     private func tileModeDisplay(vm: IlluminationViewModel) -> String {
-        guard (vm.enabled || vm.alsAutoEnabled) else { return L("Off") }
-        return vm.tileEnabled ? (vm.tileFullOpacity ? L("Full") : L("Low")) : L("Off")
+        guard (vm.enabled || vm.alsAutoEnabled) else { return String(localized: "Off") }
+        return vm.tileEnabled ? (vm.tileFullOpacity ? String(localized: "Full") : String(localized: "Low")) : String(localized: "Off")
     }
 
     private func scopeDisplay(vm: IlluminationViewModel) -> String {
-        guard (vm.enabled || vm.alsAutoEnabled) else { return L("Off") }
+        guard (vm.enabled || vm.alsAutoEnabled) else { return String(localized: "Off") }
         return vm.appPolicyScopeName
     }
 
@@ -279,11 +279,11 @@ private struct QuickActionsBar: View {
             Spacer(minLength: 0)
             // Master state: Off / Manual / Auto
             MultiStateActionButton<MasterControlState>(
-                title: L("Master"),
+                title: String(localized: "Master"),
                 states: [
-                    ActionState(value: .off, imageName: "sun.min", tint: .red, help: L("Off")),
-                    ActionState(value: .manual, imageName: "sun.max.fill", tint: .yellow, help: L("Manual")),
-                    ActionState(value: .auto, imageName: "lightspectrum.horizontal", tint: .green, help: L("Auto"))
+                    ActionState(value: .off, imageName: "sun.min", tint: .red, help: String(localized: "Off")),
+                    ActionState(value: .manual, imageName: "sun.max.fill", tint: .yellow, help: String(localized: "Manual")),
+                    ActionState(value: .auto, imageName: "lightspectrum.horizontal", tint: .green, help: String(localized: "Auto"))
                 ],
                 selection: masterControlState,
                 size: 48,
@@ -295,11 +295,11 @@ private struct QuickActionsBar: View {
 
             // Tile modes: Off / Low / Full
             MultiStateActionButton<TileMode>(
-                title: L("Tile"),
+                title: String(localized: "Tile"),
                 states: [
-                    ActionState(value: .off,  imageName: "rectangle",       tint: .gray,   help: L("Tile Off")),
-                    ActionState(value: .low,  imageName: "rectangle.fill",  tint: .yellow, help: L("Tile Low Opacity")),
-                    ActionState(value: .full, imageName: "rectangle.fill",  tint: .green,  help: L("Tile Full Opacity"))
+                    ActionState(value: .off,  imageName: "rectangle",       tint: .gray,   help: String(localized: "Tile Off")),
+                    ActionState(value: .low,  imageName: "rectangle.fill",  tint: .yellow, help: String(localized: "Tile Low Opacity")),
+                    ActionState(value: .full, imageName: "rectangle.fill",  tint: .green,  help: String(localized: "Tile Full Opacity"))
                 ],
                 selection: tileMode,
                 size: 48,
@@ -309,15 +309,15 @@ private struct QuickActionsBar: View {
             )
             .disabled(!(vm.enabled || vm.alsAutoEnabled) || !vm.tileAvailable)
             .opacity((!(vm.enabled || vm.alsAutoEnabled) || !vm.tileAvailable) ? 0.5 : 1.0)
-            .help(vm.tileAvailable ? L("Toggle HDR Tile") : L("HDR asset not found"))
+            .help(vm.tileAvailable ? String(localized: "Toggle HDR Tile") : String(localized: "HDR asset not found"))
             Spacer(minLength: 0)
 
             // Scope: Everywhere / Apps
             MultiStateActionButton<Int>(
-                title: L("Scope"),
+                title: String(localized: "Scope"),
                 states: [
-                    ActionState(value: 0, imageName: "globe",                   tint: .gray,  help: L("Everywhere")),
-                    ActionState(value: 1, imageName: "app.connected.to.app.below.fill", tint: .blue,  help: L("Apps"))
+                    ActionState(value: 0, imageName: "globe",                   tint: .gray,  help: String(localized: "Everywhere")),
+                    ActionState(value: 1, imageName: "app.connected.to.app.below.fill", tint: .blue,  help: String(localized: "Apps"))
                 ],
                 selection: appScope,
                 size: 48,

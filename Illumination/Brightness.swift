@@ -35,7 +35,7 @@ final class BrightnessController {
     private var hdrAwareEnabled: Bool = false
     private var hdrAwareDuckPercent: Double = 50.0 // lower target percent during HDR
     private var hdrAwareThreshold: Double = EDRPolicyProfileCatalog.defaultConfig.hdrDefaultThreshold    // EDR ratio threshold to consider HDR present
-    private var hdrRegionSamplerMode: Int = 0 // 0=Off,1=Auto,2=Always
+    private var hdrRegionSamplerMode: Int = 0 // 0=Off,2=Auto,3=Apps
     private var hdrActiveStreak: Int = 0
     private var hdrInactiveStreak: Int = 0
     private let hdrDuckEngine = HDRDuckEngine()
@@ -44,6 +44,7 @@ final class BrightnessController {
     private var hdrLastFrontmostBundleID: String = "unknown"
     private var hdrLastMatch: Bool = false
     private var hdrLastGate: String = "Off"
+    private var hdrLastSamplerStatus: String = "inactive"
     private var appPolicyScope: AppPolicyScope = .apps
     private var appPolicyFrontmostBundleID: String = "unknown"
     private var appPolicyDenylisted: Bool = false
@@ -73,13 +74,11 @@ final class BrightnessController {
         self.hdrAwareDuckPercent = Settings.hdrDuckPercent
         self.hdrAwareThreshold = Settings.hdrThreshold
         var storedMode = Settings.hdrRegionSamplerMode
-        // Migration: remove "On" (1); map to "Apps" (3). Keep Auto (2) but hidden in UI.
+        // Migration: remove legacy "On" (1); map to "Apps" (3).
         if storedMode == 1 { storedMode = 3; Settings.hdrRegionSamplerMode = storedMode }
-        // Experimental isolation: keep HDR detection mode off by default in non-debug flows.
-        if storedMode != 0 { storedMode = 0; Settings.hdrRegionSamplerMode = 0 }
         self.hdrRegionSamplerMode = storedMode
         self.hdrDuckFadeDuration = Settings.hdrFadeDuration
-        self.appPolicyScope = AppPolicyScope(rawValue: Settings.appPolicyScope) ?? .apps
+        self.appPolicyScope = AppPolicyScope(rawValue: Settings.appPolicyScope) ?? .everywhere
         // Migrate: if previous value looked like percentage (e.g. > 2.0), map to factor
         if let v = storedValue {
             if v >= 1.0 && v <= 2.0 {
@@ -299,9 +298,13 @@ final class BrightnessController {
             if self.enabled {
                 let newFactor = BrightnessController.factor(forPercent: self.userPercent, cap: cap)
                 var effective = newFactor
-                // HDR-aware auto-duck (driven by detection mode)
-                let hdrMode = self.hdrRegionSamplerModeValue()
-                if hdrMode != 0 {
+                // Experimental HDR ducking remains debug-only and must never override denylist policy.
+                let shouldRunExperimental = BrightnessController.shouldRunExperimentalHDR(
+                    mode: self.hdrRegionSamplerModeValue(),
+                    hdrAwareEnabled: self.hdrAwareEnabled,
+                    denylistBlocked: self.denylistBlocked
+                )
+                if shouldRunExperimental {
                     if self.isHDRContentLikely(bestRatioHint: details.bestRatio) {
                         self.hdrActiveStreak = min(self.edrPolicy.hdrStreakClamp, self.hdrActiveStreak + 1)
                         self.hdrInactiveStreak = 0
@@ -323,10 +326,7 @@ final class BrightnessController {
                         effective = (1.0 - self.hdrDuckEngine.duckLevel) * effective + self.hdrDuckEngine.duckLevel * duckTarget
                     }
                 } else {
-                    let frontmost = HDRAppList.frontmostAppInfo()
-                    self.hdrLastFrontmostBundleID = frontmost.bundleID ?? "unknown"
-                    self.hdrLastMatch = false
-                    self.hdrLastGate = "Off"
+                    self.resetHDRExperimentalState(reason: "Off")
                 }
                 if !self.hdrDuckEngine.isAnimating {
                     if abs(effective - self.factor) > 0.0001 {
@@ -387,6 +387,7 @@ final class BrightnessController {
             }
             denylistBlocked = true
             appPolicyRestorePending = denylistSnapshot != nil
+            resetHDRExperimentalState(reason: "Blocked by denylist")
             setEnabledOnMain(false)
             return
         }
@@ -486,7 +487,9 @@ final class BrightnessController {
         onMainSync {
             hdrAwareEnabled = enabled
             Settings.hdrAwareEnabled = enabled
-            if !enabled { hdrDuckEngine.reset(); hdrActiveStreak = 0; hdrInactiveStreak = 0 }
+            if !enabled {
+                resetHDRExperimentalState(reason: "Off")
+            }
         }
     }
     func hdrAwareDuckPercentValue() -> Double { onMainSync { hdrAwareDuckPercent } }
@@ -505,13 +508,15 @@ final class BrightnessController {
             Settings.hdrThreshold = val
         }
     }
-    // 0=Off,1=On(always),2=Auto(app+sampler),3=Apps(app-only)
+    // 0=Off,2=Auto(app+sampler),3=Apps(app-only)
     func hdrRegionSamplerModeValue() -> Int { onMainSync { max(0, min(3, hdrRegionSamplerMode)) } }
     func setHDRRegionSamplerMode(_ mode: Int) {
         onMainSync {
             hdrRegionSamplerMode = max(0, min(3, mode))
             Settings.hdrRegionSamplerMode = hdrRegionSamplerMode
-            if hdrRegionSamplerMode == 0 { hdrSampler.stop() }
+            if hdrRegionSamplerMode == 0 {
+                resetHDRExperimentalState(reason: "Off")
+            }
         }
     }
     func hdrAwareFadeDurationValue() -> Double { onMainSync { hdrDuckFadeDuration } }
@@ -534,7 +539,7 @@ final class BrightnessController {
     }
     func setAppPolicyScope(_ scope: Int) {
         onMainSync {
-            appPolicyScope = AppPolicyScope(rawValue: scope) ?? .apps
+            appPolicyScope = AppPolicyScope(rawValue: scope) ?? .everywhere
             Settings.appPolicyScope = appPolicyScope.rawValue
             if appPolicyScope == .everywhere {
                 denylistBlocked = false
@@ -564,7 +569,20 @@ final class BrightnessController {
 
         let gate = BrightnessController.hdrGateDecision(mode: mode, appMatched: matched, samplerHDRPresent: hdrSampler.hdrPresent)
         hdrLastGate = gate.gate
+        hdrLastSamplerStatus = hdrSampler.status.debugLabel
         return gate.allowed
+    }
+
+    private func resetHDRExperimentalState(reason: String) {
+        hdrSampler.stop()
+        hdrDuckEngine.reset()
+        hdrActiveStreak = 0
+        hdrInactiveStreak = 0
+        let frontmost = HDRAppList.frontmostAppInfo()
+        hdrLastFrontmostBundleID = frontmost.bundleID ?? "unknown"
+        hdrLastMatch = false
+        hdrLastGate = reason
+        hdrLastSamplerStatus = hdrSampler.status.debugLabel
     }
 
     static func modeName(_ mode: Int) -> String {
@@ -587,8 +605,19 @@ final class BrightnessController {
         }
     }
 
-    func hdrDetectionDiagnostics() -> (frontmostBundleID: String, matched: Bool, gate: String) {
-        onMainSync { (hdrLastFrontmostBundleID, hdrLastMatch, hdrLastGate) }
+    static func shouldRunExperimentalHDR(mode: Int, hdrAwareEnabled: Bool, denylistBlocked: Bool) -> Bool {
+        #if DEBUG
+        return hdrAwareEnabled && mode != 0 && !denylistBlocked
+        #else
+        _ = mode
+        _ = hdrAwareEnabled
+        _ = denylistBlocked
+        return false
+        #endif
+    }
+
+    func hdrDetectionDiagnostics() -> (frontmostBundleID: String, matched: Bool, gate: String, samplerStatus: String, experimentalEnabled: Bool) {
+        onMainSync { (hdrLastFrontmostBundleID, hdrLastMatch, hdrLastGate, hdrLastSamplerStatus, hdrAwareEnabled) }
     }
 
     func appPolicyDiagnostics() -> (frontmostBundleID: String, denylisted: Bool, scope: String, result: String, restorePending: Bool) {

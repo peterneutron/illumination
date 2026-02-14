@@ -1,15 +1,5 @@
 import Foundation
 
-@inline(__always)
-func L(_ key: String) -> String {
-    NSLocalizedString(key, comment: "")
-}
-
-@inline(__always)
-func LF(_ key: String, _ args: CVarArg...) -> String {
-    String(format: NSLocalizedString(key, comment: ""), arguments: args)
-}
-
 enum Settings {
     enum Key: String, CaseIterable {
         case entryMinPercent = "illumination.als.entry.minPercent"
@@ -136,12 +126,12 @@ enum Settings {
         set { store.set(newValue, forKey: Key.overlayFullsize.rawValue) }
     }
     static var overlayFPS: Int {
-        get { int(.overlayFPS, default: 30) }
+        get { int(.overlayFPS, default: 5) }
         set { store.set(clamp(newValue, min: 5, max: 120), forKey: Key.overlayFPS.rawValue) }
     }
 
     static var tileEnabled: Bool {
-        get { bool(.tileEnabled, default: false) }
+        get { bool(.tileEnabled, default: true) }
         set { store.set(newValue, forKey: Key.tileEnabled.rawValue) }
     }
     static var tileFullOpacity: Bool {
@@ -149,7 +139,7 @@ enum Settings {
         set { store.set(newValue, forKey: Key.tileFullOpacity.rawValue) }
     }
     static var tileSize: Int {
-        get { int(.tileSize, default: 64) }
+        get { int(.tileSize, default: 8) }
         set { store.set(clamp(newValue, min: 1, max: 512), forKey: Key.tileSize.rawValue) }
     }
 
@@ -225,7 +215,7 @@ enum Settings {
     }
 
     static var appPolicyScope: Int {
-        get { clamp(int(.appPolicyScope, default: 1), min: 0, max: 1) }
+        get { clamp(int(.appPolicyScope, default: 0), min: 0, max: 1) }
         set { store.set(clamp(newValue, min: 0, max: 1), forKey: Key.appPolicyScope.rawValue) }
     }
 }

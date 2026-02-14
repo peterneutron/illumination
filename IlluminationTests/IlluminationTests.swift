@@ -1,4 +1,5 @@
 import Foundation
+import ServiceManagement
 import Testing
 @testable import Illumination
 
@@ -18,7 +19,9 @@ struct IlluminationTests {
         }
 
         #expect(Settings.entryMinPercent == 1.0)
-        #expect(Settings.overlayFPS == 30)
+        #expect(Settings.overlayFPS == 5)
+        #expect(Settings.tileEnabled == true)
+        #expect(Settings.tileSize == 8)
         #expect(Settings.luxStepMode == 2)
         #expect(Settings.alsHardwareProfile == .hwMbp16l23)
         #expect(Settings.edrPolicyProfile == .edrMbp16l23)
@@ -161,7 +164,7 @@ struct IlluminationTests {
         let first = HDRAppList.allDenylistedEntries()
         let second = HDRAppList.allDenylistedEntries()
         #expect(first.count == second.count)
-        #expect(first.count >= 6)
+        #expect(first.count >= 3)
         #expect(Set(first.map(\.bundleID)).count == first.count)
     }
 
@@ -206,7 +209,7 @@ struct IlluminationTests {
 
         Settings.hdrAppRegistryData = Data([0x01, 0x02, 0x03])
         let entries = HDRAppList.allDenylistedEntries()
-        #expect(entries.count >= 6)
+        #expect(entries.count >= 3)
         #expect(HDRAppList.isBundleIDDenylisted("com.apple.photos"))
     }
 
@@ -231,6 +234,14 @@ struct IlluminationTests {
         let autoAllowed = BrightnessController.hdrGateDecision(mode: 2, appMatched: true, samplerHDRPresent: true)
         #expect(autoAllowed.allowed)
         #expect(autoAllowed.gate == "Auto allowed")
+    }
+
+    @Test("Experimental HDR path requires explicit enable and is blocked by denylist")
+    func experimentalHDRIsolationGate() {
+        #expect(BrightnessController.shouldRunExperimentalHDR(mode: 0, hdrAwareEnabled: true, denylistBlocked: false) == false)
+        #expect(BrightnessController.shouldRunExperimentalHDR(mode: 2, hdrAwareEnabled: false, denylistBlocked: false) == false)
+        #expect(BrightnessController.shouldRunExperimentalHDR(mode: 2, hdrAwareEnabled: true, denylistBlocked: true) == false)
+        #expect(BrightnessController.shouldRunExperimentalHDR(mode: 2, hdrAwareEnabled: true, denylistBlocked: false))
     }
 
     @Test("Adding duplicate blocked app is idempotent")
@@ -267,6 +278,14 @@ struct IlluminationTests {
         let everywhereAllowed = AppPolicy.decide(scope: .everywhere, frontmostDenylisted: true)
         #expect(everywhereAllowed.isBlocked == false)
         #expect(everywhereAllowed.result == "allowed")
+    }
+
+    @Test("Launch at login status labels are stable")
+    func launchAtLoginStatusLabels() {
+        #expect(LaunchAtLoginManager.statusLabel(for: .enabled).isEmpty == false)
+        #expect(LaunchAtLoginManager.statusLabel(for: .notRegistered).isEmpty == false)
+        #expect(LaunchAtLoginManager.statusLabel(for: .requiresApproval).isEmpty == false)
+        #expect(LaunchAtLoginManager.statusLabel(for: .notFound).isEmpty == false)
     }
 
     @Test("ALS decode handles malformed and sentinel inputs")

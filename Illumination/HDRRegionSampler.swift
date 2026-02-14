@@ -5,69 +5,184 @@
 
 import AppKit
 import AVFoundation
+import CoreGraphics
 #if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
 #endif
 
+enum HDRSamplerStatus: Equatable {
+    case inactive
+    case starting
+    case running
+    case permissionDenied
+    case failed(String)
+
+    var debugLabel: String {
+        switch self {
+        case .inactive: return "inactive"
+        case .starting: return "starting"
+        case .running: return "running"
+        case .permissionDenied: return "permission_denied"
+        case .failed(let reason): return "failed(\(reason))"
+        }
+    }
+}
+
 final class HDRRegionSampler: NSObject {
-    private(set) var hdrPresent: Bool = false
-    private var roi: CGRect?
+    private let stateQueue = DispatchQueue(label: "illumination.hdrsampler.state")
+    private var hdrPresentState: Bool = false
+    private var statusState: HDRSamplerStatus = .inactive
+    private var roiState: CGRect?
+    private var requestedDisplayID: CGDirectDisplayID?
+    private var startGeneration: UInt64 = 0
 
     #if canImport(ScreenCaptureKit)
     @available(macOS 12.3, *)
     private var stream: SCStream?
-    @available(macOS 12.3, *)
-    private var output: SCStreamOutput?
     #endif
 
-    func setRegionOfInterest(_ rect: CGRect?) { roi = rect }
+    var hdrPresent: Bool {
+        stateQueue.sync { hdrPresentState }
+    }
+
+    var status: HDRSamplerStatus {
+        stateQueue.sync { statusState }
+    }
+
+    func setRegionOfInterest(_ rect: CGRect?) {
+        stateQueue.async { self.roiState = rect }
+    }
 
     func start(displayID: CGDirectDisplayID) {
-        hdrPresent = false
         #if canImport(ScreenCaptureKit)
         if #available(macOS 12.3, *) {
-            guard stream == nil else { return }
+            guard CGPreflightScreenCaptureAccess() else {
+                setState(hdrPresent: false, status: .permissionDenied)
+                return
+            }
+
+            let generation = stateQueue.sync { () -> UInt64 in
+                startGeneration += 1
+                requestedDisplayID = displayID
+                hdrPresentState = false
+                statusState = .starting
+                return startGeneration
+            }
+
             Task { [weak self] in
-                guard let self = self else { return }
+                guard let self else { return }
+
                 do {
                     let content = try await SCShareableContent.current
-                    guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) ?? content.displays.first else {
+                    let resolvedDisplayID = stateQueue.sync { self.requestedDisplayID ?? displayID }
+                    guard let scDisplay = content.displays.first(where: { $0.displayID == resolvedDisplayID }) ?? content.displays.first else {
+                        self.transitionToFailure(generation: generation, reason: "display_unavailable")
                         return
                     }
+
                     let filter = SCContentFilter(display: scDisplay, excludingWindows: [])
                     let cfg = SCStreamConfiguration()
                     cfg.width = 256
                     cfg.height = 144
                     cfg.minimumFrameInterval = CMTime(value: 1, timescale: 4) // ~4 fps
-                    if let r = self.roi {
+                    if let r = stateQueue.sync(execute: { self.roiState }) {
                         cfg.sourceRect = r
                     }
-                    let s = SCStream(filter: filter, configuration: cfg, delegate: nil)
-                    try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: .global(qos: .utility))
-                    try await s.startCapture()
-                    self.stream = s
+
+                    let stream = SCStream(filter: filter, configuration: cfg, delegate: nil)
+                    try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: .global(qos: .utility))
+                    try await stream.startCapture()
+
+                    await self.swapToRunningStream(stream, generation: generation)
                 } catch {
-                    // Permission or API failure; remain no-op
+                    self.transitionToFailure(generation: generation, reason: "stream_start_failed")
                 }
+            }
+            return
+        }
+        #endif
+
+        setState(hdrPresent: false, status: .failed("unsupported_os"))
+    }
+
+    func stop() {
+        let generation = stateQueue.sync { () -> UInt64 in
+            startGeneration += 1
+            requestedDisplayID = nil
+            hdrPresentState = false
+            statusState = .inactive
+            return startGeneration
+        }
+
+        #if canImport(ScreenCaptureKit)
+        if #available(macOS 12.3, *) {
+            Task { [weak self] in
+                guard let self else { return }
+                await self.stopStreamForGeneration(generation)
             }
         }
         #endif
     }
 
-    func stop() {
-        hdrPresent = false
-        #if canImport(ScreenCaptureKit)
-        if #available(macOS 12.3, *) {
-            Task { [weak self] in
-                guard let self = self else { return }
-                do {
-                    try await self.stream?.stopCapture()
-                } catch { }
-                self.stream = nil
-            }
+    private func setState(hdrPresent: Bool, status: HDRSamplerStatus) {
+        stateQueue.async {
+            self.hdrPresentState = hdrPresent
+            self.statusState = status
         }
-        #endif
     }
+
+    private func transitionToFailure(generation: UInt64, reason: String) {
+        stateQueue.async {
+            guard generation == self.startGeneration else { return }
+            self.hdrPresentState = false
+            self.statusState = .failed(reason)
+        }
+    }
+
+    #if canImport(ScreenCaptureKit)
+    @available(macOS 12.3, *)
+    @MainActor
+    private func swapToRunningStream(_ newStream: SCStream, generation: UInt64) async {
+        let oldStream: SCStream? = stateQueue.sync {
+            guard generation == startGeneration else { return nil }
+            let existing = stream
+            stream = newStream
+            hdrPresentState = false
+            statusState = .running
+            return existing
+        }
+
+        if let oldStream {
+            try? await oldStream.stopCapture()
+        }
+
+        let shouldStopNew = stateQueue.sync { generation != startGeneration }
+        if shouldStopNew {
+            try? await newStream.stopCapture()
+        }
+    }
+
+    @available(macOS 12.3, *)
+    @MainActor
+    private func stopStreamForGeneration(_ generation: UInt64) async {
+        let currentStream: SCStream? = stateQueue.sync {
+            guard generation == startGeneration else { return nil }
+            let existing = stream
+            stream = nil
+            return existing
+        }
+        if let currentStream {
+            try? await currentStream.stopCapture()
+        }
+    }
+
+    private func setSampleHDRPresent(_ present: Bool) {
+        stateQueue.async {
+            guard case .running = self.statusState else { return }
+            self.hdrPresentState = present
+        }
+    }
+    #endif
 }
 
 #if canImport(ScreenCaptureKit)
@@ -114,9 +229,9 @@ extension HDRRegionSampler: SCStreamOutput {
         // If >2% of samples are near max, treat as HDR-like content present (approximation)
         if total > 0 {
             let ratio = Double(brightCount) / Double(total)
-            hdrPresent = ratio > 0.02
+            setSampleHDRPresent(ratio > 0.02)
         } else {
-            hdrPresent = false
+            setSampleHDRPresent(false)
         }
     }
 }

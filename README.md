@@ -23,7 +23,8 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
 - Extended Dynamic Range (EDR): Go beyond the standard SDR brightness limits.
 - Ambient Light Sensing (ALS): Automatically toggles EDR and **scales headroom** based on ambient light. Profiles are tuned for **daylight** (e.g., shade → sun) with hysteresis to avoid cloud‑flicker: Twilight, Daybreak, Midday (default), Sunburst, High Noon.
 - App Policy controls: `Master` (On/Off), `Mode` (Manual/Auto), `Scope` (Everywhere/Apps). In `Apps` scope, denylisted frontmost apps force Illumination off and previous state is restored when switching away.
-- HDR-Aware Ducking: automatically reduces boost during HDR-like content. Currently treated as **experimental/debug-oriented** in this phase.
+- Run at Login toggle in Advanced Options using native macOS login item management (`SMAppService`).
+- HDR-Aware Ducking: automatically reduces boost during HDR-like content. Treated as **experimental/debug-only** in this phase.
 - Persistent HDR Tile: An optional, small video tile that can be placed in a corner of the screen to ensure EDR mode remains active, keeping EDR engaged within fullscreen applications/spaces.
 - Debug submenu with extended diagnostics and fine-grained control settings.
 - Debug ALS trace tooling: in-memory ring buffer capture, JSONL export, clear, and replay summary for deterministic investigations.
@@ -34,9 +35,23 @@ Illumination is a powerful yet minimal macOS menu bar utility designed to unlock
 - Built‑in displays only (for now).
 - ALS `xDark` is intentionally pinned to **0.0** in the current model. This is preserved for compatibility and should be revisited with explicit recalibration experiments.
 - `HDRRegionSampler` and HDR ducking remain experimental and primarily surfaced through Debug/Experimental controls.
+- Policy precedence is strict: `Denylist block > Master/Mode automation > Experimental HDR detector`.
 - ALS trace/replay controls are intentionally Debug-only in this phase.
 - Algorithm constants are split into three tiers: immutable decode/sentinel protocol constants, ALS hardware profile constants, and EDR policy profile constants.
 - Current defaults are `HW_MBP16L23` (ALS hardware profile) and `EDR_MBP16L23` (EDR policy profile), selectable in Debug menu only.
+
+## Policy Model
+
+- Production gate: app denylist (`Scope = Apps`) is authoritative and deterministic.
+- Experimental detector: HDR content detection/ducking is debug-only and non-authoritative.
+- Permission behavior: no Screen Recording prompt in normal flow. The permission is only relevant when the experimental detector is enabled in Debug.
+- If a denylisted app is frontmost, Illumination is forced off and previous state is restored when leaving the app.
+
+### Experimental detector troubleshooting
+
+- Bright SDR scenes can look HDR-like and trigger false positives.
+- Small HDR regions can produce false negatives.
+- If diagnostics show `permission_denied`, grant Screen Recording permission to the app and retry Debug detection.
 
 ## Getting Started: Building from Source
 

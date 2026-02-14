@@ -21,6 +21,7 @@ final class IlluminationViewModel: ObservableObject {
     @Published private(set) var installedApps: [InstalledHDRApp] = []
     @Published private(set) var appPickerLoading: Bool = false
     @Published private(set) var alsTraceReplaySummary: String = "ALS replay: no trace events"
+    @Published private(set) var launchAtLoginError: String = ""
 
     private let controller = BrightnessController.shared
     private var timer: Timer?
@@ -128,8 +129,8 @@ final class IlluminationViewModel: ObservableObject {
     }
     var appPolicyScopeName: String {
         switch appScope {
-        case 0: return L("Everywhere")
-        default: return L("Apps")
+        case 0: return String(localized: "Everywhere")
+        default: return String(localized: "Apps")
         }
     }
     var appPolicyBlocked: Bool { controller.appPolicyDiagnostics().result == "blocked" }
@@ -182,11 +183,11 @@ final class IlluminationViewModel: ObservableObject {
     var statusText: String {
         let policy = controller.appPolicyDiagnostics()
         if policy.result == "blocked" {
-            let label = policy.frontmostBundleID == "unknown" ? L("app") : policy.frontmostBundleID
-            return LF("Blocked by app: %@", label)
+            let label = policy.frontmostBundleID == "unknown" ? String(localized: "app") : policy.frontmostBundleID
+            return String(format: String(localized: "Blocked by app: %@"), label)
         }
-        if alsAutoEnabled { return L("Automatic") }
-        return enabled ? L("Enabled") : L("Disabled")
+        if alsAutoEnabled { return String(localized: "Automatic") }
+        return enabled ? String(localized: "Enabled") : String(localized: "Disabled")
     }
 
     var alsProfileSymbolName: String {
@@ -238,9 +239,11 @@ final class IlluminationViewModel: ObservableObject {
         lines.append(alsTraceReplaySummary)
 
         let detection = controller.hdrDetectionDiagnostics()
+        lines.append("Experimental HDR Enabled: \(detection.experimentalEnabled ? "yes" : "no")")
         lines.append("Experimental HDR Frontmost: \(detection.frontmostBundleID)")
         lines.append("Experimental HDR Match: \(detection.matched ? "matched" : "unmatched")")
         lines.append("Experimental HDR Gate: \(detection.gate)")
+        lines.append("Experimental HDR Sampler: \(detection.samplerStatus)")
         if let issue = RuntimeDiagnostics.shared.lastIssue {
             lines.append("Runtime: \(issue)")
         }
@@ -339,6 +342,17 @@ final class IlluminationViewModel: ObservableObject {
 
     // MARK: - Advanced Options wrappers
     var supportsEDR: Bool { controller.currentGammaCapDetails().sawEDR }
+    var runAtLoginEnabled: Bool { LaunchAtLoginManager.shared.isEnabled }
+    var runAtLoginStatusLabel: String { LaunchAtLoginManager.shared.statusLabel }
+    func setRunAtLogin(_ enabled: Bool) {
+        do {
+            try LaunchAtLoginManager.shared.setEnabled(enabled)
+            launchAtLoginError = ""
+        } catch {
+            launchAtLoginError = error.localizedDescription
+        }
+        objectWillChange.send()
+    }
     var guardEnabled: Bool { controller.isGuardEnabled() }
     var guardFactor: Double { controller.guardFactorValue() }
     func setGuardEnabled(_ on: Bool) { controller.setGuardEnabled(on); objectWillChange.send() }
@@ -352,6 +366,8 @@ final class IlluminationViewModel: ObservableObject {
 
     var hdrMode: Int { controller.hdrRegionSamplerModeValue() } // 0 Off, 2 Auto (Debug), 3 Apps
     func setHDRMode(_ mode: Int) { controller.setHDRRegionSamplerMode(mode); objectWillChange.send() }
+    var hdrExperimentalEnabled: Bool { controller.hdrAwareIsEnabled() }
+    func setHDRExperimentalEnabled(_ enabled: Bool) { controller.setHDRAwareEnabled(enabled); objectWillChange.send() }
     var hdrDuckPercent: Int { Int(round(controller.hdrAwareDuckPercentValue())) }
     func setHDRDuckPercent(_ p: Int) { controller.setHDRAwareDuckPercent(Double(p)); objectWillChange.send() }
     var hdrThreshold: Double { controller.hdrAwareThresholdValue() }
@@ -375,14 +391,14 @@ final class IlluminationViewModel: ObservableObject {
 
     var addFrontmostDisabledReason: String {
         if canAddFrontmostBlockedApp { return "" }
-        return L("Frontmost app has no bundle identifier.")
+        return String(localized: "Frontmost app has no bundle identifier.")
     }
 
     var frontmostAppDisplayLabel: String {
         let info = HDRAppList.frontmostAppInfo()
         if let name = info.displayName, !name.isEmpty { return name }
         if let bundleID = info.bundleID, !bundleID.isEmpty { return bundleID }
-        return L("Unavailable")
+        return String(localized: "Unavailable")
     }
 
     func addFrontmostBlockedApp() {

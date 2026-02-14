@@ -28,6 +28,7 @@
 		A23B2E6909D654728F3923B4 /* AppPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362FDEB4CBD3D85604CAF5B8 /* AppPolicy.swift */; };
 		A80CCD213EDC318906FB4CAF /* RuntimeDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97B220D70B5EA395C4708F1 /* RuntimeDiagnostics.swift */; };
 		ABB01C1BF8967F238883C4E6 /* Overlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D897A2CA1E637C998F7328B3 /* Overlay.swift */; };
+		AD3469FBC3256A31E1286607 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E8B9DA6498963FD01937C3D0 /* Localizable.xcstrings */; };
 		B03645D077FF7712156506E2 /* AdvancedOptionsMenus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C41DF8C81AD0D73AF82A8F /* AdvancedOptionsMenus.swift */; };
 		BF1EE06C4CA4740389B7BAC2 /* HDRRegionSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E70B849C29B0F2F63A39CCE0 /* HDRRegionSampler.swift */; };
 		C28BDB81F5FB5B3A81378C74 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1D74E2B2ED87221EF7CAB1B3 /* Assets.xcassets */; };
@@ -36,6 +37,7 @@
 		D31DF05FF3F451407FE2FB7E /* OverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4320C584B2087058CD0FD62F /* OverlayWindow.swift */; };
 		D41C2B0EBDEACF5859BA22D9 /* MenuBarUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 775BC76C935D8068B602DBF2 /* MenuBarUI.swift */; };
 		D44BAF636D572C93DA6C181E /* AlgorithmProfiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F48D5DA2825882F15ACD05 /* AlgorithmProfiles.swift */; };
+		DB2C5CE02F61D52895736A36 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B20476C71848C2A96522E14 /* LaunchAtLoginManager.swift */; };
 		E28CCD21E9B9316982057F3E /* IlluminationApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557AD4D677E272316445B950 /* IlluminationApp.swift */; };
 		E64ADD19A4E4D1851B62CCE5 /* ALSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FABC729ADCF702FE9C45D5 /* ALSManager.swift */; };
 		EFBF11B67E3CE37F846F72C5 /* SystemInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA9A734FD3BB5FCC4362B2A /* SystemInfo.swift */; };
@@ -60,6 +62,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0B20476C71848C2A96522E14 /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
 		0C5B4AB118C68AC72B50BCD4 /* IlluminationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IlluminationUITests.swift; sourceTree = "<group>"; };
 		1473CDDE8339EB7F110637BE /* TileFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TileFeature.swift; sourceTree = "<group>"; };
 		1482B2B20B0DA9DC04C9BE69 /* IlluminationTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IlluminationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -94,6 +97,7 @@
 		D897A2CA1E637C998F7328B3 /* Overlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Overlay.swift; sourceTree = "<group>"; };
 		E5940956163CE8553D3BC227 /* IlluminationUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IlluminationUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		E70B849C29B0F2F63A39CCE0 /* HDRRegionSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HDRRegionSampler.swift; sourceTree = "<group>"; };
+		E8B9DA6498963FD01937C3D0 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		F8FABC729ADCF702FE9C45D5 /* ALSManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ALSManager.swift; sourceTree = "<group>"; };
 		FEFBC9390DF31164CC4CD848 /* HDRTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HDRTile.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -122,6 +126,8 @@
 				557AD4D677E272316445B950 /* IlluminationApp.swift */,
 				5E658D221641B97F765D8A8A /* IlluminationViewModel.swift */,
 				880D0AA64BEF56E9CEF4B9D9 /* InstalledAppDiscovery.swift */,
+				0B20476C71848C2A96522E14 /* LaunchAtLoginManager.swift */,
+				E8B9DA6498963FD01937C3D0 /* Localizable.xcstrings */,
 				775BC76C935D8068B602DBF2 /* MenuBarUI.swift */,
 				D897A2CA1E637C998F7328B3 /* Overlay.swift */,
 				4320C584B2087058CD0FD62F /* OverlayWindow.swift */,
@@ -260,6 +266,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
+				de,
 				en,
 			);
 			mainGroup = 7BE40B172F7260A9C38812D3;
@@ -282,6 +289,7 @@
 			files = (
 				C28BDB81F5FB5B3A81378C74 /* Assets.xcassets in Resources */,
 				723564C72AC8C72E614A8061 /* HDRTile.mp4 in Resources */,
+				AD3469FBC3256A31E1286607 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -310,6 +318,7 @@
 				E28CCD21E9B9316982057F3E /* IlluminationApp.swift in Sources */,
 				33609D1E794510920DB10250 /* IlluminationViewModel.swift in Sources */,
 				6876DF72D4FFAA2D06AF8662 /* InstalledAppDiscovery.swift in Sources */,
+				DB2C5CE02F61D52895736A36 /* LaunchAtLoginManager.swift in Sources */,
 				D41C2B0EBDEACF5859BA22D9 /* MenuBarUI.swift in Sources */,
 				ABB01C1BF8967F238883C4E6 /* Overlay.swift in Sources */,
 				D31DF05FF3F451407FE2FB7E /* OverlayWindow.swift in Sources */,
@@ -450,6 +459,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Illumination;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Illumination uses Screen Recording only for experimental HDR detection in Debug mode.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -517,6 +527,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Illumination;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Illumination uses Screen Recording only for experimental HDR detection in Debug mode.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

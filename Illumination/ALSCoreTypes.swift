@@ -11,11 +11,11 @@ enum ALSProfile: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .twilight: return L("Twilight")
-        case .daybreak: return L("Daybreak")
-        case .midday: return L("Midday")
-        case .sunburst: return L("Sunburst")
-        case .highNoon: return L("High Noon")
+        case .twilight: return String(localized: "Twilight")
+        case .daybreak: return String(localized: "Daybreak")
+        case .midday: return String(localized: "Midday")
+        case .sunburst: return String(localized: "Sunburst")
+        case .highNoon: return String(localized: "High Noon")
         }
     }
 }

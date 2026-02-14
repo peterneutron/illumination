@@ -6,8 +6,8 @@ enum AppPolicyScope: Int {
 
     var displayName: String {
         switch self {
-        case .everywhere: return L("Everywhere")
-        case .apps: return L("Apps")
+        case .everywhere: return String(localized: "Everywhere")
+        case .apps: return String(localized: "Apps")
         }
     }
 }
