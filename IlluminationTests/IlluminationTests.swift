@@ -6,7 +6,10 @@ struct IlluminationTests {
 
     @Test("Settings defaults and clamping")
     func settingsDefaultsAndBounds() {
-        let suite = UserDefaults(suiteName: "IlluminationTests.SettingsDefaults")!
+        guard let suite = UserDefaults(suiteName: "IlluminationTests.SettingsDefaults") else {
+            #expect(Bool(false))
+            return
+        }
         suite.removePersistentDomain(forName: "IlluminationTests.SettingsDefaults")
         Settings.useStore(suite)
         defer {
@@ -31,7 +34,10 @@ struct IlluminationTests {
 
     @Test("Corrupt calibrator data falls back safely")
     func calibratorCorruptDataFallback() {
-        let suite = UserDefaults(suiteName: "IlluminationTests.CalibratorFallback")!
+        guard let suite = UserDefaults(suiteName: "IlluminationTests.CalibratorFallback") else {
+            #expect(Bool(false))
+            return
+        }
         suite.removePersistentDomain(forName: "IlluminationTests.CalibratorFallback")
         Settings.useStore(suite)
         defer {

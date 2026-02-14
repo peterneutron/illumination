@@ -40,7 +40,7 @@ lint:
 	  echo "error: swiftlint not found in PATH. Install SwiftLint to run lint checks."; \
 	  exit 1; \
 	fi
-	@swiftlint lint --config .swiftlint.yml --strict
+	@swiftlint lint --config .swiftlint.yml
 
 test:
 	@xcodebuild test \

@@ -446,7 +446,9 @@ final class BrightnessController {
                 }
             }
         })
-        RunLoop.main.add(capPoller!, forMode: .common)
+        if let capPoller {
+            RunLoop.main.add(capPoller, forMode: .common)
+        }
     }
 
     private func stopCapPoller() {
