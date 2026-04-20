@@ -1,0 +1,44 @@
+name: illumination-ci
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          brew install xcodegen swiftlint
+
+      - name: Verify required build tools
+        run: |
+          set -euo pipefail
+          command -v xcodegen
+          command -v swiftlint
+          xcodegen --version
+          swiftlint version
+
+      - name: Verify
+        run: make verify
