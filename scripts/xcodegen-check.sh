@@ -30,7 +30,8 @@ normalize_pbxproj() {
   sed -E \
     -e 's/objectVersion = [0-9]+;/objectVersion = <normalized>;/g' \
     -e 's/preferredProjectObjectVersion = [0-9]+;/preferredProjectObjectVersion = <normalized>;/g' \
-    -e 's/compatibilityVersion = "Xcode [^"]+";/compatibilityVersion = "Xcode <normalized>";/g' \
+    -e '/compatibilityVersion = "Xcode [^"]+";/d' \
+    -e '/productRefGroup = [A-F0-9]+ \/\* Products \*\//d' \
     "$src" >"$dst"
 }
 
