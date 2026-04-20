@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  XCODEGEN_VERSION: 2.45.3
+  SWIFTLINT_VERSION: 0.63.2
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -28,9 +33,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build tools
+      - name: Install pinned build tools
         run: |
-          brew install xcodegen swiftlint
+          set -euo pipefail
+          tool_bin="$RUNNER_TEMP/pinned-bin"
+          mkdir -p "$tool_bin"
+
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen"
+          install -m 0755 "$RUNNER_TEMP/xcodegen/xcodegen/bin/xcodegen" "$tool_bin/xcodegen"
+
+          curl -fsSL -o "$RUNNER_TEMP/swiftlint.zip" "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/portable_swiftlint.zip"
+          unzip -q "$RUNNER_TEMP/swiftlint.zip" -d "$RUNNER_TEMP/swiftlint"
+          install -m 0755 "$RUNNER_TEMP/swiftlint/swiftlint" "$tool_bin/swiftlint"
+
+          echo "$tool_bin" >> "$GITHUB_PATH"
 
       - name: Verify required build tools
         run: |
