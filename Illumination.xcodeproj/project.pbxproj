@@ -261,7 +261,6 @@
 				};
 			};
 			buildConfigurationList = 1BA4D6C99EB8D98ACD7A7E63 /* Build configuration list for PBXProject "Illumination" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -272,6 +271,7 @@
 			mainGroup = 7BE40B172F7260A9C38812D3;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			productRefGroup = EA0847E2B269FF95C711518F /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
