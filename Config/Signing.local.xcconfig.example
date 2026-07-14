@@ -1,0 +1,3 @@
+// Copy to Signing.local.xcconfig for local Xcode signing.
+// Set ILLUMINATION_DEVELOPMENT_TEAM to your Apple developer team identifier.
+ILLUMINATION_DEVELOPMENT_TEAM =

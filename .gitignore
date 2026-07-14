@@ -30,6 +30,7 @@ DerivedData/
 *.xccheckout
 *.xcuserdatad
 xcuserdata/
+Config/Signing.local.xcconfig
 # If you actually use a workspace, track it; otherwise keep this ignore:
 # *.xcworkspace
 
